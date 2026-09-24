@@ -1,0 +1,37 @@
+{
+  "name": "@feedbacks/schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "exports": {
+    "./db": "./src/db/schema.ts",
+    "./zero": "./src/zero/index.ts",
+    "./zero/schema": "./src/zero/schema.ts",
+    "./zero/queries": "./src/zero/queries.ts",
+    "./zero/mutators": "./src/zero/mutators.ts",
+    "./zero/context": "./src/zero/context.ts",
+    "./ids": "./src/ids.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate && pnpm zero:generate",
+    "zero:generate": "drizzle-zero generate --config ./drizzle-zero.config.ts --output ./src/zero/schema.ts --format --suppress-defaults-warning",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "echo 'schema: source-only package'",
+    "migrate": "tsx scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@rocicorp/zero": "1.9.0",
+    "drizzle-orm": "0.45.3",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "0.31.11",
+    "drizzle-zero": "0.20.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15"
+  }
+}

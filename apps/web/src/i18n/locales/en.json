@@ -1,0 +1,122 @@
+{
+  "app": {
+    "name": "Feedbacks"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "create": "Create",
+    "continue": "Continue",
+    "loading": "Loading…",
+    "comingSoon": "Coming soon",
+    "or": "or",
+    "back": "Back"
+  },
+  "auth": {
+    "signInTitle": "Sign in to Feedbacks",
+    "signInSubtitle": "Welcome back.",
+    "email": "Email",
+    "password": "Password",
+    "name": "Full name",
+    "emailPlaceholder": "you@company.com",
+    "passwordPlaceholder": "At least 8 characters",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "continueWithGoogle": "Continue with Google",
+    "forgotPassword": "Forgot password?",
+    "invalidCredentials": "Invalid email or password.",
+    "invitationOnly": "This workspace is invitation-only. Ask an owner to invite you.",
+    "signOut": "Sign out",
+    "forgotTitle": "Reset your password",
+    "forgotSubtitle": "Enter your email and we'll send you a reset link.",
+    "sendResetLink": "Send reset link",
+    "resetSent": "If an account exists for {{email}}, a reset link is on its way.",
+    "resetNoSmtp": "Email isn't configured on this instance: the link is printed in the server logs, or an owner can reset your password.",
+    "resetTitle": "Choose a new password",
+    "newPassword": "New password",
+    "updatePassword": "Update password",
+    "passwordUpdated": "Password updated. You can sign in.",
+    "invalidToken": "This reset link is invalid or has expired.",
+    "backToSignIn": "Back to sign in"
+  },
+  "setup": {
+    "title": "Set up your workspace",
+    "subtitle": "You're the first person here: create your account and your organization. You'll be its owner.",
+    "yourAccount": "Your account",
+    "organization": "Organization",
+    "orgName": "Organization name",
+    "orgNamePlaceholder": "Acme Inc.",
+    "submit": "Create workspace",
+    "submitting": "Creating…",
+    "alreadyDone": "This instance is already set up."
+  },
+  "invite": {
+    "title": "Join {{org}}",
+    "subtitle": "{{inviter}} invited you as {{role}}.",
+    "createAccount": "Create your account to join.",
+    "signInToAccept": "Sign in with {{email}} to accept.",
+    "accept": "Join {{org}}",
+    "joining": "Joining…",
+    "invalid": "This invitation is invalid, expired or has already been used.",
+    "roles": {
+      "owner": "owner",
+      "admin": "admin",
+      "member": "member"
+    }
+  },
+  "nav": {
+    "inbox": "Inbox",
+    "myTickets": "My tickets",
+    "tickets": "Tickets",
+    "docs": "Documents",
+    "channels": "Channels",
+    "newChannel": "New channel",
+    "search": "Search",
+    "newTicket": "New ticket",
+    "collapseSidebar": "Collapse sidebar",
+    "showSidebar": "Show sidebar",
+    "themeLight": "Light theme",
+    "themeDark": "Dark theme",
+    "language": "Language",
+    "resizeHint": "Drag to resize · Click to collapse"
+  },
+  "channel": {
+    "newTitle": "New channel",
+    "name": "Name",
+    "namePlaceholder": "e.g. feedback",
+    "private": "Private channel",
+    "privateHint": "Only invited members can see it.",
+    "topic": "Topic (optional)",
+    "composerPlaceholder": "Message #{{name}}",
+    "empty": "This is the beginning of #{{name}}.",
+    "emptyHint": "Send the first message.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "notFound": "Channel not found."
+  },
+  "placeholder": {
+    "inbox": "Notifications about tickets and mentions will appear here.",
+    "tickets": "Projects, tickets, list and board views arrive in the next milestone.",
+    "docs": "Your knowledge base will live here."
+  },
+  "members": {
+    "title": "Members",
+    "nav": "Members & invitations",
+    "invite": "Invite",
+    "invitePlaceholder": "colleague@company.com",
+    "role": "Role",
+    "inviteSent": "Invitation created",
+    "inviteSentEmail": "An email was sent to {{email}}.",
+    "inviteSentNoEmail": "Email isn't configured: copy the link and send it yourself.",
+    "copyLink": "Copy invite link",
+    "linkCopied": "Invite link copied",
+    "pending": "Pending invitations",
+    "expires": "expires {{when}}",
+    "cancel": "Cancel invitation",
+    "members": "Members ({{count}})",
+    "you": "you",
+    "onlyAdmins": "Only owners and admins can invite people.",
+    "noPending": "No pending invitations."
+  }
+}

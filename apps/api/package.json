@@ -1,0 +1,34 @@
+{
+  "name": "@feedbacks/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "build": "node build.mjs",
+    "start": "node dist/migrate.js && node dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "user:reset-password": "tsx scripts/reset-password.ts",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.5",
+    "@feedbacks/schema": "workspace:*",
+    "@hono/node-server": "2.1.1",
+    "@rocicorp/zero": "1.9.0",
+    "better-auth": "1.7.6",
+    "drizzle-orm": "0.45.3",
+    "hono": "4.13.9",
+    "nodemailer": "^10.0.10",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15"
+  }
+}

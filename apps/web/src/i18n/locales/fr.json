@@ -1,0 +1,122 @@
+{
+  "app": {
+    "name": "Feedbacks"
+  },
+  "common": {
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "save": "Enregistrer",
+    "create": "Créer",
+    "continue": "Continuer",
+    "loading": "Chargement…",
+    "comingSoon": "Bientôt disponible",
+    "or": "ou",
+    "back": "Retour"
+  },
+  "auth": {
+    "signInTitle": "Connexion à Feedbacks",
+    "signInSubtitle": "Content de vous revoir.",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "name": "Nom complet",
+    "emailPlaceholder": "vous@entreprise.com",
+    "passwordPlaceholder": "8 caractères minimum",
+    "signIn": "Se connecter",
+    "signingIn": "Connexion…",
+    "continueWithGoogle": "Continuer avec Google",
+    "forgotPassword": "Mot de passe oublié ?",
+    "invalidCredentials": "E-mail ou mot de passe incorrect.",
+    "invitationOnly": "Cet espace est accessible sur invitation. Demandez à un propriétaire de vous inviter.",
+    "signOut": "Se déconnecter",
+    "forgotTitle": "Réinitialiser le mot de passe",
+    "forgotSubtitle": "Saisissez votre e-mail, nous vous enverrons un lien de réinitialisation.",
+    "sendResetLink": "Envoyer le lien",
+    "resetSent": "Si un compte existe pour {{email}}, un lien de réinitialisation est en route.",
+    "resetNoSmtp": "L'e-mail n'est pas configuré sur cette instance : le lien apparaît dans les logs du serveur, ou un propriétaire peut réinitialiser votre mot de passe.",
+    "resetTitle": "Choisissez un nouveau mot de passe",
+    "newPassword": "Nouveau mot de passe",
+    "updatePassword": "Mettre à jour",
+    "passwordUpdated": "Mot de passe mis à jour. Vous pouvez vous connecter.",
+    "invalidToken": "Ce lien de réinitialisation est invalide ou a expiré.",
+    "backToSignIn": "Retour à la connexion"
+  },
+  "setup": {
+    "title": "Configurer votre espace",
+    "subtitle": "Vous êtes la première personne ici : créez votre compte et votre organisation. Vous en serez propriétaire.",
+    "yourAccount": "Votre compte",
+    "organization": "Organisation",
+    "orgName": "Nom de l'organisation",
+    "orgNamePlaceholder": "Acme SAS",
+    "submit": "Créer l'espace",
+    "submitting": "Création…",
+    "alreadyDone": "Cette instance est déjà configurée."
+  },
+  "invite": {
+    "title": "Rejoindre {{org}}",
+    "subtitle": "{{inviter}} vous a invité en tant que {{role}}.",
+    "createAccount": "Créez votre compte pour rejoindre l'espace.",
+    "signInToAccept": "Connectez-vous avec {{email}} pour accepter.",
+    "accept": "Rejoindre {{org}}",
+    "joining": "Connexion à l'espace…",
+    "invalid": "Cette invitation est invalide, expirée ou déjà utilisée.",
+    "roles": {
+      "owner": "propriétaire",
+      "admin": "administrateur",
+      "member": "membre"
+    }
+  },
+  "nav": {
+    "inbox": "Inbox",
+    "myTickets": "Mes tickets",
+    "tickets": "Tickets",
+    "docs": "Documents",
+    "channels": "Canaux",
+    "newChannel": "Nouveau canal",
+    "search": "Rechercher",
+    "newTicket": "Nouveau ticket",
+    "collapseSidebar": "Replier la barre latérale",
+    "showSidebar": "Afficher la barre latérale",
+    "themeLight": "Thème clair",
+    "themeDark": "Thème sombre",
+    "language": "Langue",
+    "resizeHint": "Glisser pour redimensionner · Cliquer pour replier"
+  },
+  "channel": {
+    "newTitle": "Nouveau canal",
+    "name": "Nom",
+    "namePlaceholder": "ex. retours",
+    "private": "Canal privé",
+    "privateHint": "Seuls les membres invités le voient.",
+    "topic": "Sujet (optionnel)",
+    "composerPlaceholder": "Écrire dans #{{name}}",
+    "empty": "C'est le début de #{{name}}.",
+    "emptyHint": "Envoyez le premier message.",
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "notFound": "Canal introuvable."
+  },
+  "placeholder": {
+    "inbox": "Les notifications sur les tickets et les mentions apparaîtront ici.",
+    "tickets": "Projets, tickets, vues liste et tableau arrivent au prochain jalon.",
+    "docs": "Votre base de connaissances vivra ici."
+  },
+  "members": {
+    "title": "Membres",
+    "nav": "Membres et invitations",
+    "invite": "Inviter",
+    "invitePlaceholder": "collegue@entreprise.com",
+    "role": "Rôle",
+    "inviteSent": "Invitation créée",
+    "inviteSentEmail": "Un e-mail a été envoyé à {{email}}.",
+    "inviteSentNoEmail": "L'e-mail n'est pas configuré : copiez le lien et envoyez-le vous-même.",
+    "copyLink": "Copier le lien d'invitation",
+    "linkCopied": "Lien d'invitation copié",
+    "pending": "Invitations en attente",
+    "expires": "expire {{when}}",
+    "cancel": "Annuler l'invitation",
+    "members": "Membres ({{count}})",
+    "you": "vous",
+    "onlyAdmins": "Seuls les propriétaires et administrateurs peuvent inviter.",
+    "noPending": "Aucune invitation en attente."
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "feedbacks",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:seed": "node scripts/db.mjs seed",
+    "db:generate": "pnpm --filter @feedbacks/schema generate",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "build": "pnpm -r build",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test:e2e-sync": "node scripts/e2e-sync.mjs",
+    "user:reset-password": "node scripts/with-env.mjs pnpm --filter @feedbacks/api --silent user:reset-password"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "embedded-postgres": "18.4.0-beta.17",
+    "typescript": "7.0.2"
+  }
+}

@@ -1,0 +1,70 @@
+# Self-hosting: `cp .env.example .env`, edit it, then `docker compose up -d`.
+# One entry point: the `web` service (port 8080 here, or a domain in Dokploy/Traefik).
+name: feedbacks
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    command: postgres -c wal_level=logical -c max_replication_slots=10 -c max_wal_senders=10
+    environment:
+      POSTGRES_DB: feedbacks
+      POSTGRES_USER: feedbacks
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: pg_isready -U feedbacks -d feedbacks
+      interval: 5s
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    restart: unless-stopped
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      APP_URL: ${APP_URL:?set APP_URL in .env}
+      DATABASE_URL: postgres://feedbacks:${POSTGRES_PASSWORD}@postgres:5432/feedbacks
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+
+  zero-cache:
+    image: rocicorp/zero:1.9.0
+    restart: unless-stopped
+    stop_grace_period: 1m
+    depends_on: { api: { condition: service_healthy } }
+    environment:
+      ZERO_UPSTREAM_DB: postgres://feedbacks:${POSTGRES_PASSWORD}@postgres:5432/feedbacks
+      ZERO_CVR_DB: postgres://feedbacks:${POSTGRES_PASSWORD}@postgres:5432/feedbacks
+      ZERO_CHANGE_DB: postgres://feedbacks:${POSTGRES_PASSWORD}@postgres:5432/feedbacks
+      ZERO_REPLICA_FILE: /data/replica.db
+      ZERO_APP_PUBLICATIONS: zero_data
+      ZERO_ADMIN_PASSWORD: ${ZERO_ADMIN_PASSWORD:?set ZERO_ADMIN_PASSWORD in .env}
+      ZERO_QUERY_URL: http://api:3000/api/zero/query
+      ZERO_MUTATE_URL: http://api:3000/api/zero/mutate
+      ZERO_QUERY_FORWARD_COOKIES: "true"
+      ZERO_MUTATE_FORWARD_COOKIES: "true"
+      ZERO_ENABLE_CRUD_MUTATIONS: "false"
+      ZERO_LOG_LEVEL: warn
+    volumes:
+      - zero-data:/data
+    healthcheck:
+      test: curl -fs http://127.0.0.1:4848/keepalive || exit 1
+      interval: 10s
+      start_period: 2m
+
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    restart: unless-stopped
+    depends_on: [api, zero-cache]
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+
+volumes:
+  postgres-data:
+  zero-data:

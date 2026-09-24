@@ -1,0 +1,26 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Native builds that must run on install
+allowBuilds:
+  '@rocicorp/zero-sqlite3': true
+  embedded-postgres: true
+  '@embedded-postgres/darwin-arm64': true
+  '@embedded-postgres/darwin-x64': true
+  '@embedded-postgres/linux-x64': true
+  '@embedded-postgres/linux-arm64': true
+  esbuild: true
+  protobufjs: false
+
+minimumReleaseAgeExclude:
+  - '@better-auth/core@1.7.6'
+  - '@better-auth/drizzle-adapter@1.7.6'
+  - '@better-auth/kysely-adapter@1.7.6'
+  - '@better-auth/memory-adapter@1.7.6'
+  - '@better-auth/mongo-adapter@1.7.6'
+  - '@better-auth/prisma-adapter@1.7.6'
+  - '@better-auth/telemetry@1.7.6'
+  - better-auth@1.7.6
+  - hono@4.13.9
+  - vite@8.3.1

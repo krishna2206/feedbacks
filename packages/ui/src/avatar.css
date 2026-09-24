@@ -1,0 +1,6 @@
+/* ---------- Avatar ---------- */
+.avatar {
+  display: inline-grid; place-items: center; flex-shrink: 0; border-radius: 50%; aspect-ratio: 1;
+  color: #fff; font-weight: 500; line-height: 0; user-select: none; letter-spacing: 0;
+}
+.avatar--empty { background: transparent !important; border: 1px dashed var(--bg-border-strong); }
