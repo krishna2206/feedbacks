@@ -8,6 +8,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,3 +22,13 @@ jobs:
       - run: pnpm build
       - name: Sync integration test (embedded Postgres + zero-cache + API)
         run: pnpm test:e2e-sync
+        timeout-minutes: 10
+        env:
+          E2E_LOG: ${{ runner.temp }}/e2e-stack.log
+      - name: Upload e2e stack log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-stack-log
+          path: ${{ runner.temp }}/e2e-stack.log
+          if-no-files-found: ignore

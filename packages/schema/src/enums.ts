@@ -8,6 +8,10 @@ export type OrgRole = z.infer<typeof orgRole>;
 export const projectRole = z.enum(["lead", "contributor", "reporter", "viewer"]);
 export type ProjectRole = z.infer<typeof projectRole>;
 
+/** "org": every organization member can read the project (implicit viewer); "members": project members only */
+export const projectVisibility = z.enum(["org", "members"]);
+export type ProjectVisibility = z.infer<typeof projectVisibility>;
+
 export const channelKind = z.enum(["public", "private", "dm"]);
 export type ChannelKind = z.infer<typeof channelKind>;
 
@@ -24,7 +28,18 @@ export type TicketPriority = z.infer<typeof ticketPriority>;
 export const createdVia = z.enum(["app", "mcp"]);
 export type CreatedVia = z.infer<typeof createdVia>;
 
-export const activityKind = z.enum(["created", "status", "priority", "assignee", "title", "linked_messages"]);
+export const activityKind = z.enum([
+  "created",
+  "status",
+  "priority",
+  "assignee",
+  "title",
+  "description",
+  "labels",
+  "project",
+  "linked_messages",
+  "unlinked_messages",
+]);
 export type ActivityKind = z.infer<typeof activityKind>;
 
 export const notificationKind = z.enum([

@@ -20,6 +20,7 @@ import {
   projectMember,
   reaction,
   ticket,
+  ticketAlias,
   ticketLabel,
   ticketSource,
 } from "./app";
@@ -54,6 +55,7 @@ export const organizationRelations = relations(organization, ({ many }) => ({
   projects: many(project),
   channels: many(channel),
   labels: many(label),
+  tickets: many(ticket),
 }));
 
 export const memberRelations = relations(member, ({ one }) => ({
@@ -82,6 +84,7 @@ export const projectRelations = relations(project, ({ one, many }) => ({
   organization: one(organization, { fields: [project.organizationId], references: [organization.id] }),
   members: many(projectMember),
   tickets: many(ticket),
+  aliases: many(ticketAlias),
 }));
 
 export const projectMemberRelations = relations(projectMember, ({ one }) => ({
@@ -131,13 +134,20 @@ export const reactionRelations = relations(reaction, ({ one }) => ({
 /* ------------------------------ Tickets ----------------------------- */
 
 export const ticketRelations = relations(ticket, ({ one, many }) => ({
+  organization: one(organization, { fields: [ticket.organizationId], references: [organization.id] }),
   project: one(project, { fields: [ticket.projectId], references: [project.id] }),
+  aliases: many(ticketAlias),
   assignee: one(user, { fields: [ticket.assigneeId], references: [user.id], relationName: "assignee" }),
   creator: one(user, { fields: [ticket.creatorId], references: [user.id], relationName: "creator" }),
   labels: many(ticketLabel),
   sources: many(ticketSource),
   comments: many(comment),
   activities: many(activity),
+}));
+
+export const ticketAliasRelations = relations(ticketAlias, ({ one }) => ({
+  ticket: one(ticket, { fields: [ticketAlias.ticketId], references: [ticket.id] }),
+  project: one(project, { fields: [ticketAlias.projectId], references: [project.id] }),
 }));
 
 export const ticketLabelRelations = relations(ticketLabel, ({ one }) => ({

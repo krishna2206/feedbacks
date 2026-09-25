@@ -11,6 +11,8 @@ import { BrowseChannelsModal, NewDmModal } from "./chat/ChannelModals";
 import { NewChannelModal } from "./NewChannelModal";
 import { useOrg } from "./org-context";
 import { setSidebar, useSidebar } from "./sidebar-state";
+import { openCreateTicket, useProjects } from "./tickets/data";
+import { ProjectBadge } from "./tickets/meta";
 
 function NavLink({
   to,
@@ -60,6 +62,7 @@ export function Sidebar() {
   const { width, collapsed } = useSidebar();
   const [channels] = useQuery(queries.channels.mine({ organizationId: org.id }));
   const [dms] = useQuery(queries.channels.dms({ organizationId: org.id }));
+  const projects = useProjects();
   const [browse, setBrowse] = useState(false);
   const [newDm, setNewDm] = useState(false);
   const wsMenu = useMenu();
@@ -113,8 +116,15 @@ export function Sidebar() {
             <Tooltip content={`${t("nav.search")} · ${t("common.comingSoon")}`} shortcut={["⌘", "K"]} placement="bottom">
               <Button variant="muted" size="md" iconOnly icon={<Icon name="search" />} aria-label={t("nav.search")} />
             </Tooltip>
-            <Tooltip content={`${t("nav.newTicket")} · ${t("common.comingSoon")}`} shortcut="C" placement="bottom">
-              <Button variant="secondary" size="md" iconOnly icon={<Icon name="compose" />} aria-label={t("nav.newTicket")} />
+            <Tooltip content={t("nav.newTicket")} shortcut="C" placement="bottom">
+              <Button
+                variant="secondary"
+                size="md"
+                iconOnly
+                icon={<Icon name="compose" />}
+                onClick={() => openCreateTicket()}
+                aria-label={t("nav.newTicket")}
+              />
             </Tooltip>
           </div>
         </div>
@@ -123,6 +133,38 @@ export function Sidebar() {
           <NavLink to="/$orgSlug/inbox" params={{ orgSlug: org.slug }} icon={<Icon name="inbox" />} label={t("nav.inbox")} />
           <NavLink to="/$orgSlug/tickets" params={{ orgSlug: org.slug }} icon={<Icon name="target" />} label={t("nav.tickets")} />
           <NavLink to="/$orgSlug/docs" params={{ orgSlug: org.slug }} icon={<Icon name="doc" />} label={t("nav.docs")} />
+
+          <Section
+            title={t("nav.projects")}
+            action={
+              <Tooltip content={t("nav.allProjects")} placement="bottom">
+                <Button
+                  variant="muted"
+                  size="sm"
+                  iconOnly
+                  icon={<Icon name="box" size={14} />}
+                  onClick={() => void navigate({ to: "/$orgSlug/projects", params: { orgSlug: org.slug } })}
+                  aria-label={t("nav.allProjects")}
+                />
+              </Tooltip>
+            }
+          >
+            {projects.length === 0 && (
+              <Link to="/$orgSlug/projects" params={{ orgSlug: org.slug }} className="nav-link nav-link--button">
+                <Icon name="plus" />
+                <span className="nav-link__label">{t("nav.noProjects")}</span>
+              </Link>
+            )}
+            {projects.map((p) => (
+              <NavLink
+                key={p.id}
+                to="/$orgSlug/projects/$projectKey"
+                params={{ orgSlug: org.slug, projectKey: p.key }}
+                icon={<ProjectBadge project={p} size={16} />}
+                label={p.name}
+              />
+            ))}
+          </Section>
 
           <Section
             title={t("nav.channels")}

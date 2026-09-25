@@ -37,9 +37,9 @@ Every business table has `organization_id`, so an instance can host several orga
 | Area | Tables |
 |---|---|
 | Identity | `user`, `session`, `account`, `verification`, `organization`, `member` (owner/admin/member), `invitation`, `team`, `team_member` (Better Auth) |
-| Projects | `project` (key → `APP-42`, server-side ticket counter), `project_member` (lead/contributor/reporter/viewer), `label` |
-| Chat | `channel` (public/private/dm, optional default project, `last_seq`), `channel_member` (`last_read_seq`), `message` (`seq`, `parent_id` for threads, `reply_count`), `attachment` (pending until sent), `reaction` |
-| Tickets | `ticket`, `ticket_label`, **`ticket_source`** (N:N ticket ↔ message, the link from feedback to work), `comment`, `activity` |
+| Projects | `project` (key → `APP-42`, server-side ticket counter, visibility `org`/`members`), `project_member` (lead/contributor/reporter/viewer), `label` |
+| Chat | `channel` (public/private/dm, optional default project, `last_seq`), `channel_member` (`last_read_seq`), `message` (`seq`, `parent_id` for threads, `reply_count`, `ticket_count`), `attachment` (pending until sent), `reaction` |
+| Tickets | `ticket`, `ticket_label`, **`ticket_source`** (N:N ticket ↔ message, the link from feedback to work), `ticket_alias` (former keys of moved tickets), `comment`, `activity` |
 | Notifications | `notification` (mentions, assignments, status changes, "your message became a ticket", access requests) |
 | Internal (not synced) | `storage_deletion` (files waiting to be deleted from storage, with retry state) |
 | Knowledge base | `doc_folder`, `doc` (Markdown), `doc_version`, `access_grant` (org/team/user × read/edit/manage, inherited through folders) |
@@ -64,18 +64,34 @@ The Postgres publication `zero_data` (migration `0001_zero_publication.sql`) and
 
 1. *Any* deletion of an `attachment` row queues its files (original and preview): a Postgres trigger inserts their keys into `storage_deletion`, whatever the cause — message deleted by its author or an admin, channel or organization removed (cascades), expired upload. Application code can't forget it.
 2. The API deletes queued files right after each mutation (seconds later), so the user action never waits for, nor fails because of, the storage backend. A failed deletion stays queued with an exponential backoff (1 min → 1 day) and a `last_error`.
-3. A sweeper runs in the API process at startup and every `UPLOAD_SWEEP_INTERVAL_MIN` (daily by default): it deletes *pending* uploads (never attached to a message: an abandoned draft) older than `UPLOAD_PENDING_TTL_HOURS` (24 h), then retries due deletions. Rows are claimed with `FOR UPDATE SKIP LOCKED` in batches, and deleting a missing file succeeds, so several API instances can sweep concurrently and every run is idempotent. Admins can run it by hand: `pnpm uploads:sweep [--dry-run]`.
+3. A sweeper runs in the API process at startup and every `UPLOAD_SWEEP_INTERVAL_MIN` (daily by default): it deletes *pending* uploads (never attached to a message: an abandoned draft) older than `UPLOAD_PENDING_TTL_HOURS` (24 h), then retries due deletions. Rows are claimed with `FOR UPDATE SKIP LOCKED` in batches, and deleting a missing file succeeds, so several API instances can sweep concurrently and every run is idempotent. Admins can run it by hand: `pnpm uploads:sweep [--dry-run]`; `UPLOAD_SWEEP_INTERVAL_MIN=0` turns the in-process sweeper off (e.g. to run the CLI from a cron job instead).
 
 Deleting a message soft-deletes the message itself (its thread stays readable) but hard-deletes its attachments.
 
-**Query plans.** Zero appends the primary key to every `ORDER BY`, so indexes end with `id` (e.g. `message (channel_id, created_at, id)`), and zero-cache mirrors Postgres indexes in its SQLite replica. `pnpm analyze-query` shows the plans: the chat queries run without table scans or full sorts.
+**Query plans.** Zero appends the primary key to every `ORDER BY`, so indexes end with `id` (e.g. `message (channel_id, created_at, id)`), and zero-cache mirrors Postgres indexes in its SQLite replica. `pnpm analyze-query` shows the plans: chat and ticket queries search indexes; the remaining `TEMP B-TREE FOR LAST TERM OF ORDER BY` lines are tie-breaker sorts on `id` inside an index range.
+
+## Ticket mechanics
+
+**Numbering without gaps or duplicates.** `tickets.create` (and `tickets.move`) run `update project set ticket_counter = ticket_counter + 1 … returning` inside the server transaction. The update row-locks the project, so concurrent creations are serialized: numbers are unique and contiguous, and a failed transaction rolls the counter back with everything else. The client applies the same increment to its local copy, so an optimistic ticket shows a *provisional* number; if someone else created a ticket at the same moment, the authoritative row syncs back with the final number a few milliseconds later. Keys (`APP-42`) are never stored: they're `project.key` + `number`, and project keys can't be changed.
+
+**Moving a ticket** gives it the next number of the target project and records the former `(project, number)` in `ticket_alias`, so links to the old key still resolve (the ticket page redirects). Counters never go back, so a number is never reused.
+
+**Messages → tickets, idempotently.** `ticket_source` links a ticket to the chat messages it was built from (text, screenshots, a precision posted later). Creating a ticket from messages, or linking messages to a ticket, is refused with an `ALREADY_LINKED` application error when a message already backs another ticket; the error's `details` list the existing links (`{ code, links: [{ messageId, ticketId }] }`), and the same call with `force: true` links it anyway. This is the rule the REST API and the MCP server will expose, so an agent can safely re-run "turn today's feedback into tickets". The web app checks the same thing locally first and asks before forcing.
+
+**"Unprocessed" messages.** `message.ticket_count` is maintained by a trigger on `ticket_source` (insert/delete, including cascades), so the *Unprocessed* tab is a plain indexed filter (`ticket_count = 0`) rather than an anti-join, which Zero doesn't support on the client.
+
+**Activities and notifications.** Mutations record activities (`created`, `status`, `priority`, `assignee`, `title`, `description`, `labels`, `project`, `linked_messages`, `unlinked_messages`) with ids derived from the caller's `eventId`, so the optimistic and authoritative runs write the same rows. Notifications are created on the server only: assignment (to the assignee), status change (creator, assignee and **authors of the source messages**: the people who reported the problem learn that it moved), "your message became a ticket" (source authors), comments and mentions. The actor is never notified.
+
+**Descriptions and comments** are Markdown rendered to React elements by a small block renderer (headings, quotes, lists, code) on top of the chat's inline renderer: no HTML string is ever injected, so there is nothing to sanitize.
 
 ## Permissions
 
 - **Queries** filter rows server-side (`packages/schema/src/zero/permissions.ts`). For example, a channel is visible if it's public and the user belongs to its organization, or if the user is a member of the channel. Clients only ever receive rows they may see.
 - **Mutators** check permissions only when `tx.location === "server"`. On the client, the rows needed for the check may not be synced, and the server decides anyway.
 - **Channels**: public channels are readable by every organization member and writable once joined (posting joins automatically); private channels and DMs are readable and writable by their members only; only their members can add people to a private channel. The creator, owners and admins rename, re-scope or archive a channel. Authors edit their messages; authors, owners and admins delete them.
-- **Organization roles** (Better Auth): owner and admins invite members and change roles. **Project roles** and **document grants** are enforced by the same query and mutator mechanism as those features land.
+- **Organization roles** (Better Auth): owner and admins invite members and change roles. **Document grants** will use the same query and mutator mechanism (M4).
+- **Projects**: owners and admins create, archive and see every project. A project with visibility `org` is readable by every organization member (implicit *viewer*); with `members`, only by its members. Project roles decide what people can do: **lead** manages the project and its members, **contributor** creates and edits tickets, **reporter** reads and comments, **viewer** reads.
+- **Tickets** are readable when their project is, and also by the **authors of their source messages**, even in a project they can't otherwise see: whoever reported a problem can follow what became of it. Creating and editing tickets requires lead/contributor (or admin); commenting requires reporter or above, or being a source author. Labels are created by contributors and above, renamed or deleted by admins.
 - **Agents** (MCP, CLI) act through a user's session, so they never have more rights than that user.
 
 ## Decisions
@@ -91,3 +107,7 @@ Deleting a message soft-deletes the message itself (its thread stays readable) b
 | Browser-side image previews, `aws4fetch` for S3 | Keeps the API image small and free of native dependencies |
 | Soft delete of messages, hard delete of their files | Threads stay readable; files are really gone (privacy) |
 | File deletion queued by a trigger, drained by the API | Covers every deletion path (including cascades) and never fails the user action |
+| Ticket counter row-locked in the mutation transaction | Gap-free per-project numbers under concurrency, with provisional numbers on the client |
+| `ALREADY_LINKED` + `force` for message → ticket links | Re-running a conversion (human or agent) never silently duplicates tickets |
+| `message.ticket_count` maintained by a trigger | "Unprocessed" becomes an indexed filter; correct on every path, including cascades |
+| Source authors can read their tickets | Closing the loop with the people who report problems, without opening whole projects |

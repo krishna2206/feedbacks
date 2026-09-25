@@ -3,6 +3,7 @@ import { defineMutator, defineMutators, type Transaction } from "@rocicorp/zero"
 import { z } from "zod";
 import { DM_MAX_MEMBERS, dmChannelId, excerpt, mentionedUserIds, normalizeChannelName } from "../chat";
 import { channelKind } from "../enums";
+import { commentMutators, labelMutators, projectMutators, ticketMutators } from "./mutators-tickets";
 import { assertCanManageChannel, assertCanReadChannel, assertOrgMember, isOrgAdmin, orgMembership, PermissionError } from "./permissions";
 import { zql } from "./schema";
 
@@ -340,6 +341,7 @@ export const mutators = defineMutators({
           body: args.body.trim(),
           seq,
           replyCount: 0,
+          ticketCount: 0,
           lastReplyAt: null,
           // The server clock is authoritative for ordering
           createdAt: at,
@@ -439,4 +441,9 @@ export const mutators = defineMutators({
       }
     }),
   },
+
+  projects: projectMutators,
+  labels: labelMutators,
+  tickets: ticketMutators,
+  comments: commentMutators,
 });

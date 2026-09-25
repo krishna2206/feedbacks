@@ -10,7 +10,7 @@ type UserLookup = (id: string) => { name: string } | undefined;
 const INLINE =
   /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(~~[^~\n]+~~)|(\*[^*\s][^*\n]*\*)|(\b_[^_\s][^_\n]*_\b)|(<@[A-Za-z0-9_-]{1,64}>)|(https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?])/g;
 
-function inline(text: string, users: UserLookup, meId: string, keyBase: string): ReactNode[] {
+export function inline(text: string, users: UserLookup, meId: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let i = 0;

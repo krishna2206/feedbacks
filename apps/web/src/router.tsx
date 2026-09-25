@@ -101,7 +101,34 @@ const inboxRoute = createRoute({
 const ticketsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/tickets",
-  component: lazyRouteComponent(() => import("./app/Placeholder"), "TicketsPlaceholder"),
+  validateSearch: (s: Record<string, unknown>): { tab?: "created" | "reported" } => ({
+    tab: s.tab === "created" || s.tab === "reported" ? s.tab : undefined,
+  }),
+  component: lazyRouteComponent(() => import("./app/tickets/TicketsPages"), "MyTicketsPage"),
+});
+const projectsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/projects",
+  component: lazyRouteComponent(() => import("./app/tickets/ProjectsPages"), "ProjectsPage"),
+});
+const projectRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/projects/$projectKey",
+  validateSearch: (s: Record<string, unknown>): { tab?: "active" | "backlog" } => ({
+    tab: s.tab === "active" || s.tab === "backlog" ? s.tab : undefined,
+  }),
+  component: lazyRouteComponent(() => import("./app/tickets/TicketsPages"), "ProjectPage"),
+});
+const projectSettingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/projects/$projectKey/settings",
+  component: lazyRouteComponent(() => import("./app/tickets/ProjectsPages"), "ProjectSettingsPage"),
+});
+/** A ticket by key (APP-12, former keys redirect) or by id */
+const issueRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/issue/$ref",
+  component: lazyRouteComponent(() => import("./app/tickets/TicketPage"), "TicketPage"),
 });
 const docsRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -122,7 +149,18 @@ const routeTree = rootRoute.addChildren([
   inviteRoute,
   forgotRoute,
   resetRoute,
-  orgRoute.addChildren([orgIndexRoute, channelRoute, inboxRoute, ticketsRoute, docsRoute, membersRoute]),
+  orgRoute.addChildren([
+    orgIndexRoute,
+    channelRoute,
+    inboxRoute,
+    ticketsRoute,
+    projectsRoute,
+    projectRoute,
+    projectSettingsRoute,
+    issueRoute,
+    docsRoute,
+    membersRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

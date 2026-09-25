@@ -434,6 +434,346 @@ assert.equal((await db.query("select 1 from attachment where id = $1", [recent.i
 assert.ok(onDisk(recent.storageKey), "recent pending file kept");
 step("sweeper: expired pending uploads deleted, recent ones kept, dry run changes nothing");
 
+/* ------------------------------------------------------------------ */
+/* M2 — projects, roles, numbering, messages → tickets, comments       */
+/* ------------------------------------------------------------------ */
+
+const errorOf = async (w: { server: Promise<unknown> }) =>
+  (await w.server) as {
+    type: string;
+    error?: { message?: string; details?: { code?: string; links?: { messageId: string; ticketId: string }[] } };
+  };
+const ev = () => ({ eventId: newId(), at: Date.now() });
+
+// Dave: organization member who will only be a project viewer
+const inviteDave = await authPost(
+  "/organization/invite-member",
+  { email: "dave@example.com", role: "member", organizationId: orgId },
+  owner,
+);
+const dave = await signUp("Dave Viewer", "dave@example.com");
+assert.equal((await authPost("/organization/accept-invitation", { invitationId: inviteDave.json.id }, dave)).res.status, 200);
+const zd = zeroFor(dave);
+
+// 19. Projects: only admins create; roles decide who writes
+const appId = newId();
+await rejected(
+  zb.mutate(
+    mutators.projects.create({
+      id: newId(),
+      organizationId: orgId,
+      key: "NOPE",
+      name: "Nope",
+      color: "#5e6ad2",
+      visibility: "org",
+      createdAt: Date.now(),
+    }),
+  ),
+  "member creating a project",
+);
+await ok(
+  zo.mutate(
+    mutators.projects.create({
+      id: appId,
+      organizationId: orgId,
+      key: "app",
+      name: "App",
+      color: "#26b5ce",
+      visibility: "org",
+      members: [
+        { userId: bob.userId, role: "contributor" },
+        { userId: carol.userId, role: "reporter" },
+        { userId: dave.userId, role: "viewer" },
+      ],
+      createdAt: Date.now(),
+    }),
+  ),
+  "owner creates APP",
+);
+assert.equal((await db.query("select key from project where id = $1", [appId])).rows[0].key, "APP", "key normalized");
+const secId = newId();
+await ok(
+  zo.mutate(
+    mutators.projects.create({
+      id: secId,
+      organizationId: orgId,
+      key: "SEC",
+      name: "Security",
+      color: "#eb5757",
+      visibility: "members",
+      createdAt: Date.now(),
+    }),
+  ),
+  "private project",
+);
+const newTicket = (projectId: string, title: string, extra: Partial<Parameters<typeof mutators.tickets.create>[0]> = {}) =>
+  mutators.tickets.create({
+    id: newId(),
+    ...ev(),
+    organizationId: orgId,
+    projectId,
+    title,
+    description: "",
+    status: "todo",
+    priority: 0,
+    assigneeId: null,
+    labelIds: [],
+    sourceMessageIds: [],
+    force: false,
+    ...extra,
+  });
+const firstTicket = newTicket(appId, "First ticket");
+await ok(zb.mutate(firstTicket), "contributor creates");
+const firstId = firstTicket.args.id;
+assert.equal((await db.query("select number, creator_id, created_via from ticket where id = $1", [firstId])).rows[0].number, 1);
+await rejected(zc.mutate(newTicket(appId, "reporter tries")), "reporter creating");
+await rejected(
+  zc.mutate(mutators.tickets.update({ ...ev(), organizationId: orgId, ticketId: firstId, status: "done" })),
+  "reporter editing",
+);
+await rejected(zd.mutate(newTicket(appId, "viewer tries")), "viewer creating");
+await rejected(
+  zd.mutate(mutators.comments.create({ id: newId(), organizationId: orgId, ticketId: firstId, body: "hi", createdAt: Date.now() })),
+  "viewer commenting",
+);
+await ok(
+  zc.mutate(
+    mutators.comments.create({ id: newId(), organizationId: orgId, ticketId: firstId, body: "Reporter comment", createdAt: Date.now() }),
+  ),
+  "reporter comments",
+);
+assert.ok(await zd.run(queries.tickets.get({ organizationId: orgId, ticketId: firstId }), { type: "complete" }), "viewer reads the ticket");
+assert.equal(
+  await zb.run(queries.projects.byKey({ organizationId: orgId, key: "SEC" }), { type: "complete" }),
+  undefined,
+  "private project invisible",
+);
+await rejected(zb.mutate(newTicket(secId, "not a member")), "creating in a private project");
+assert.equal((await ze.run(queries.projects.list({ organizationId: orgId }), { type: "complete" })).length, 0, "other org sees no project");
+assert.equal(
+  await ze.run(queries.tickets.get({ organizationId: orgId, ticketId: firstId }), { type: "complete" }),
+  undefined,
+  "other org sees no ticket",
+);
+await rejected(
+  ze.mutate(mutators.comments.create({ id: newId(), organizationId: orgId, ticketId: firstId, body: "x", createdAt: Date.now() })),
+  "other org commenting",
+);
+step("projects: admins create; contributor writes, reporter comments, viewer reads, private project hidden, other org nothing");
+
+// 20. Numbering under concurrency: unique and contiguous
+const burst = Array.from({ length: 12 }, (_, i) => (i % 2 ? zo : zb).mutate(newTicket(appId, `Burst ${i}`)));
+for (const w of burst) await ok(w, "burst create");
+const numbers = (await db.query("select number from ticket where project_id = $1 order by number", [appId])).rows.map((r) =>
+  Number(r.number),
+);
+assert.deepEqual(
+  numbers,
+  Array.from({ length: 13 }, (_, i) => i + 1),
+  "1..13 without gaps or duplicates",
+);
+assert.equal(Number((await db.query("select ticket_counter from project where id = $1", [appId])).rows[0].ticket_counter), 13);
+step("numbering: 12 concurrent creations → unique, contiguous numbers");
+
+// 21. Messages → ticket: sources, chips, notifications, idempotence, force, link, unprocessed
+const carolMsg = newId();
+const carolShot = newId();
+await ok(
+  zc.mutate(
+    mutators.messages.send({
+      id: carolMsg,
+      organizationId: orgId,
+      channelId: general.id,
+      body: "Checkout button does nothing on iOS",
+      createdAt: Date.now(),
+    }),
+  ),
+  "carol reports",
+);
+await ok(
+  zc.mutate(
+    mutators.messages.send({
+      id: carolShot,
+      organizationId: orgId,
+      channelId: general.id,
+      body: "Screenshot attached above",
+      createdAt: Date.now(),
+    }),
+  ),
+  "carol follow-up",
+);
+const fromMsgs = newTicket(appId, "Checkout button does nothing on iOS", {
+  status: "triage",
+  sourceMessageIds: [carolMsg],
+  assigneeId: bob.userId,
+});
+await ok(zo.mutate(fromMsgs), "ticket from messages");
+const fromId = fromMsgs.args.id;
+assert.equal((await db.query("select 1 from ticket_source where ticket_id = $1 and message_id = $2", [fromId, carolMsg])).rowCount, 1);
+const carolNotif = await db.query("select kind from notification where user_id = $1 and ticket_id = $2", [carol.userId, fromId]);
+assert.deepEqual(
+  carolNotif.rows.map((r) => r.kind),
+  ["ticket_from_my_message"],
+  "the author is told",
+);
+assert.equal(
+  (await db.query("select kind from notification where user_id = $1 and ticket_id = $2", [bob.userId, fromId])).rows[0]?.kind,
+  "ticket_assigned",
+);
+const bobChannel = await zb.run(queries.messages.byChannel({ organizationId: orgId, channelId: general.id, limit: 200 }), {
+  type: "complete",
+});
+const chip = bobChannel.find((m) => m.id === carolMsg)?.ticketSources[0]?.ticket;
+assert.equal(chip?.id, fromId, "chip: the linked ticket comes with the message");
+assert.equal(chip?.project?.key, "APP");
+const again = await errorOf(zb.mutate(newTicket(appId, "Duplicate", { sourceMessageIds: [carolMsg] })));
+assert.equal(again.type, "error");
+assert.equal(again.error?.details?.code, "ALREADY_LINKED", JSON.stringify(again));
+assert.deepEqual(again.error?.details?.links, [{ messageId: carolMsg, ticketId: fromId }]);
+await ok(zb.mutate(newTicket(appId, "On purpose", { sourceMessageIds: [carolMsg], force: true })), "force");
+await ok(
+  zb.mutate(mutators.tickets.linkMessages({ ...ev(), organizationId: orgId, ticketId: fromId, messageIds: [carolShot], force: false })),
+  "link a later message",
+);
+assert.equal((await db.query("select count(*)::int as n from ticket_source where ticket_id = $1", [fromId])).rows[0].n, 2);
+const loneMsg = newId();
+await ok(
+  zc.mutate(
+    mutators.messages.send({ id: loneMsg, organizationId: orgId, channelId: general.id, body: "Dark mode please", createdAt: Date.now() }),
+  ),
+  "unrelated",
+);
+const unprocessed = await zo.run(queries.messages.unprocessed({ organizationId: orgId, channelId: general.id }), { type: "complete" });
+assert.ok(
+  unprocessed.some((m) => m.id === loneMsg),
+  "unlinked message is unprocessed",
+);
+assert.ok(!unprocessed.some((m) => m.id === carolMsg || m.id === carolShot), "linked messages are processed");
+assert.ok(!unprocessed.some((m) => m.authorId === owner.userId), "own messages are not listed");
+// Source authors can follow a ticket of a project they can't otherwise read
+const bobMsg = newId();
+await ok(
+  zb.mutate(
+    mutators.messages.send({
+      id: bobMsg,
+      organizationId: orgId,
+      channelId: general.id,
+      body: "Found a leaked token in logs",
+      createdAt: Date.now(),
+    }),
+  ),
+  "bob reports",
+);
+const secTicket = newTicket(secId, "Leaked token", { sourceMessageIds: [bobMsg] });
+await ok(zo.mutate(secTicket), "owner files it in SEC");
+await ok(zo.mutate(newTicket(secId, "Unrelated secret")), "other SEC ticket");
+assert.ok(
+  await zb.run(queries.tickets.get({ organizationId: orgId, ticketId: secTicket.args.id }), { type: "complete" }),
+  "bob follows his report",
+);
+const bobReported = await zb.run(queries.tickets.mine({ organizationId: orgId, filter: "reported" }), { type: "complete" });
+assert.ok(
+  bobReported.some((t) => t.id === secTicket.args.id),
+  "listed in 'my reports'",
+);
+assert.ok(!bobReported.some((t) => t.title === "Unrelated secret"));
+step("messages → ticket: sources, chip, author notified, ALREADY_LINKED then force, later link, unprocessed tab, authors follow");
+
+// 22. Activities and status notifications
+await ok(
+  zb.mutate(mutators.tickets.update({ ...ev(), organizationId: orgId, ticketId: fromId, status: "in_progress", priority: 2 })),
+  "status",
+);
+const kinds = (await db.query("select kind from activity where ticket_id = $1 order by created_at, kind", [fromId])).rows.map(
+  (r) => r.kind,
+);
+for (const k of ["created", "linked_messages", "status", "priority"]) assert.ok(kinds.includes(k), `activity ${k}`);
+assert.ok(
+  (await db.query("select 1 from notification where user_id = $1 and ticket_id = $2 and kind = 'ticket_status'", [carol.userId, fromId]))
+    .rowCount,
+  "source author told about the status change",
+);
+assert.equal(
+  (await db.query("select 1 from notification where user_id = $1 and ticket_id = $2 and kind = 'ticket_status'", [bob.userId, fromId]))
+    .rowCount,
+  0,
+  "the actor is not notified",
+);
+assert.notEqual((await db.query("select completed_at from ticket where id = $1", [firstId])).rows[0].completed_at, undefined);
+await ok(zb.mutate(mutators.tickets.update({ ...ev(), organizationId: orgId, ticketId: firstId, status: "done" })), "close");
+assert.notEqual((await db.query("select completed_at from ticket where id = $1", [firstId])).rows[0].completed_at, null, "completedAt set");
+const labelId = newId();
+await ok(
+  zb.mutate(mutators.labels.create({ id: labelId, organizationId: orgId, name: "Bug", color: "#eb5757", createdAt: Date.now() })),
+  "contributor creates a label",
+);
+await rejected(
+  zc.mutate(mutators.labels.create({ id: newId(), organizationId: orgId, name: "Nope", color: "#eb5757", createdAt: Date.now() })),
+  "reporter creating a label",
+);
+await ok(zb.mutate(mutators.tickets.setLabels({ ...ev(), organizationId: orgId, ticketId: fromId, labelIds: [labelId] })), "label");
+assert.equal((await db.query("select 1 from ticket_label where ticket_id = $1 and label_id = $2", [fromId, labelId])).rowCount, 1);
+step("activities: created, linked, status, priority, labels; status notifies creator/assignee/authors, not the actor");
+
+// 23. Comments with mentions
+const commentId = newId();
+await ok(
+  zc.mutate(
+    mutators.comments.create({
+      id: commentId,
+      organizationId: orgId,
+      ticketId: fromId,
+      body: `${mentionToken(bob.userId)} still broken on 17.5`,
+      createdAt: Date.now(),
+    }),
+  ),
+  "comment with mention",
+);
+assert.equal(
+  (await db.query("select kind from notification where user_id = $1 and ticket_id = $2 and kind = 'mention'", [bob.userId, fromId]))
+    .rowCount,
+  1,
+);
+await ok(zb.mutate(mutators.comments.react({ organizationId: orgId, commentId, emoji: "👍", at: Date.now() })), "react to comment");
+await rejected(
+  zb.mutate(mutators.comments.edit({ organizationId: orgId, id: commentId, body: "hacked", at: Date.now() })),
+  "editing someone else's comment",
+);
+step("comments: mention notifies, reactions, only the author edits");
+
+// 24. Moving a ticket: new key, former key still resolves, numbers never reused
+const opsId = newId();
+await ok(
+  zo.mutate(
+    mutators.projects.create({
+      id: opsId,
+      organizationId: orgId,
+      key: "OPS",
+      name: "Operations",
+      color: "#f2994a",
+      visibility: "org",
+      members: [{ userId: bob.userId, role: "contributor" }],
+      createdAt: Date.now(),
+    }),
+  ),
+  "OPS",
+);
+await ok(zb.mutate(mutators.tickets.move({ ...ev(), organizationId: orgId, ticketId: fromId, projectId: opsId })), "move");
+const moved = (await db.query("select project_id, number from ticket where id = $1", [fromId])).rows[0];
+assert.deepEqual({ project: moved.project_id, number: Number(moved.number) }, { project: opsId, number: 1 });
+const fromNumber = Number((await db.query("select number from ticket_alias where ticket_id = $1", [fromId])).rows[0].number);
+const alias = await zb.run(queries.tickets.alias({ organizationId: orgId, projectId: appId, number: fromNumber }), { type: "complete" });
+assert.equal(alias?.ticketId, fromId, "former key resolves");
+const next = newTicket(appId, "After the move");
+await ok(zb.mutate(next), "next APP ticket");
+assert.ok(Number((await db.query("select number from ticket where id = $1", [next.args.id])).rows[0].number) > fromNumber, "no reuse");
+await rejected(
+  zc.mutate(mutators.tickets.move({ ...ev(), organizationId: orgId, ticketId: firstId, projectId: opsId })),
+  "reporter moving",
+);
+step("move: new number in the target project, former key kept as alias, numbers never reused");
+
+await zd.close();
 await Promise.all([zb.close(), zo.close(), ze.close(), zc.close()]);
 await db.end();
 console.log("\nAll sync checks passed.");

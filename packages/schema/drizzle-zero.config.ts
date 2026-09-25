@@ -26,6 +26,7 @@ export default drizzleZeroConfig(drizzleSchema, {
     attachment: true,
     reaction: true,
     ticket: true,
+    ticketAlias: true,
     ticketLabel: true,
     ticketSource: true,
     comment: true,

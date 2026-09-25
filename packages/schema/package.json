@@ -12,7 +12,9 @@
     "./zero/mutators": "./src/zero/mutators.ts",
     "./zero/context": "./src/zero/context.ts",
     "./ids": "./src/ids.ts",
-    "./chat": "./src/chat.ts"
+    "./chat": "./src/chat.ts",
+    "./tickets": "./src/tickets.ts",
+    "./enums": "./src/enums.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate && pnpm zero:generate",

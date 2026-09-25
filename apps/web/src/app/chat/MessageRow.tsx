@@ -1,14 +1,18 @@
+import { ticketKey } from "@feedbacks/schema/tickets";
 import { mutators } from "@feedbacks/schema/zero";
-import { Avatar, Button, clock, Icon, Menu, Modal, Tooltip, timeAgo, toast, useMenu } from "@feedbacks/ui";
+import { Avatar, Button, Checkbox, clock, Icon, Menu, Modal, Tooltip, timeAgo, toast, useMenu } from "@feedbacks/ui";
 import { useZero } from "@rocicorp/zero/react";
+import { Link } from "@tanstack/react-router";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOrg } from "../org-context";
 import type { OrgUser } from "../org-data";
+import { statusLabel, TicketStatusIcon } from "../tickets/meta";
 import { Attachments } from "./Attachments";
 import { decodeMentions, encodeMentions } from "./Composer";
 import { Markdown, plainText } from "./markdown";
 import { AddReactionButton, Reactions } from "./Reactions";
+import { useChatSelection } from "./selection";
 
 export type MessageData = {
   id: string;
@@ -34,6 +38,16 @@ export type MessageData = {
   }[];
   reactions: readonly { id: string; emoji: string; userId: string; user?: { name: string } | null }[];
   replies?: readonly { id: string; authorId: string | null; author?: { id: string; name: string; image: string | null } | null }[];
+  /** Tickets built from this message (ticket is absent when the user can't read it) */
+  ticketSources?: readonly {
+    ticketId: string;
+    ticket?: {
+      id: string;
+      number: number;
+      status: "triage" | "backlog" | "todo" | "in_progress" | "in_review" | "done" | "canceled";
+      project?: { key: string } | null;
+    } | null;
+  }[];
 };
 
 type Props = {
@@ -61,6 +75,12 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
   const mine = m.authorId === user.id;
   const deleted = !!m.deletedAt;
   const replyCount = m.replyCount ?? 0;
+  const sel = useChatSelection();
+  // Only top-level messages of the channel view can be selected (not the thread panel)
+  const selectable = !!sel?.enabled && !!onOpenThread && !deleted;
+  const selected = selectable && !!sel?.selected.has(m.id);
+  const selecting = selectable && (sel?.selected.size ?? 0) > 0;
+  const chips = (m.ticketSources ?? []).filter((s) => s.ticket?.project);
 
   const repliers = (() => {
     const seen = new Map<string, { id: string; name: string; image: string | null }>();
@@ -69,12 +89,32 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
   })();
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: click toggles the message while selecting (checkbox and `x` are the accessible paths)
     <div
       className={`msg${first ? " msg--first" : ""}`}
       data-highlighted={highlighted || undefined}
       data-actions-open={more.open || pickerOpen || undefined}
+      data-selectable={selectable || undefined}
+      data-selecting={selecting || undefined}
+      data-selected={selected || undefined}
+      data-surface={selected ? "selected" : undefined}
       id={`msg-${m.id}`}
+      onMouseEnter={selectable ? () => sel?.hover(m.id) : undefined}
+      onClick={
+        selectable
+          ? (e) => {
+              const target = e.target as HTMLElement;
+              if (target.closest("button, a, textarea, input, .msg__actions")) return;
+              if (selecting || e.shiftKey || e.metaKey || e.ctrlKey) sel?.toggle(m.id, { shiftKey: e.shiftKey });
+            }
+          : undefined
+      }
     >
+      {selectable && (
+        <span className="msg__select">
+          <Checkbox checked={selected} onChange={() => sel?.toggle(m.id)} label={t("chat.selectMessage")} />
+        </span>
+      )}
       {first ? <Avatar user={m.author ?? null} size={32} /> : <span className="msg__gutter">{clock(time, i18n.language)}</span>}
       <div className="msg__main">
         {first && (
@@ -107,6 +147,21 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
         )}
 
         {!deleted && <Attachments items={m.attachments} />}
+        {chips.length > 0 && (
+          <div className="msg__tickets">
+            {chips.map((s) => {
+              const tk = s.ticket as NonNullable<typeof s.ticket>;
+              const key = ticketKey((tk.project as { key: string }).key, tk.number);
+              return (
+                <Link key={s.ticketId} to="/$orgSlug/issue/$ref" params={{ orgSlug: org.slug, ref: key }} className="chip msg__ticket">
+                  <TicketStatusIcon status={tk.status} />
+                  <span className="tabular">{key}</span>
+                  <span className="msg__ticket-status">· {statusLabel(t, tk.status)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
         {!deleted && <Reactions messageId={m.id} reactions={m.reactions} meId={user.id} />}
 
         {onOpenThread && replyCount > 0 && (
@@ -131,6 +186,13 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
             <Tooltip content={t("chat.reply")} placement="top">
               <button type="button" className="msg-action" aria-label={t("chat.reply")} onClick={() => onOpenThread(m.id)}>
                 <Icon name="reply" size={16} />
+              </button>
+            </Tooltip>
+          )}
+          {selectable && (
+            <Tooltip content={t("chat.createTicket")} shortcut="C" placement="top">
+              <button type="button" className="msg-action" aria-label={t("chat.createTicket")} onClick={() => sel?.createFrom(m.id)}>
+                <Icon name="ticket" size={16} />
               </button>
             </Tooltip>
           )}
@@ -161,6 +223,19 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
         placement="bottom-end"
         width={200}
         items={[
+          ...(selectable
+            ? [
+                { id: "ticket", label: t("chat.createTicket"), icon: <Icon name="ticket" />, onSelect: () => sel?.createFrom(m.id) },
+                {
+                  id: "select",
+                  label: selected ? t("chat.unselect") : t("chat.select"),
+                  icon: <Icon name="check" />,
+                  hint: "X",
+                  onSelect: () => sel?.toggle(m.id),
+                },
+                { kind: "separator" as const, id: "s0" },
+              ]
+            : []),
           {
             id: "copy",
             label: t("chat.copyText"),

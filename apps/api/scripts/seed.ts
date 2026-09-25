@@ -1,7 +1,8 @@
 /**
  * Demo data for a FRESH instance (refuses to run if users exist):
  *   pnpm db:seed   → owner demo@example.com / demo-password, organization "Demo" with channels, a private
- *   channel, a DM, a thread, reactions, mentions and an image attachment.
+ *   channel, a DM, a thread, reactions, mentions and an image attachment, plus 3 projects (one private),
+ *   labels and ~15 tickets, some built from chat messages (others stay "unprocessed" on purpose).
  */
 
 import { crc32, deflateSync } from "node:zlib";
@@ -208,9 +209,9 @@ await react(exportBug, sam.id, "👀");
 await react(exportBug, ownerU.id, "🙏");
 await post(feedback, ownerU.id, `${mentionToken(sam.id)} can you check the dark mode effort for next sprint?`);
 
-await post(bugs, sam.id, "The orders table doesn't sort by date anymore when filtered by status.");
-await post(bugs, alex.id, `${mentionToken(ownerU.id)} the password reset email goes to spam for Outlook users.`);
-await post(
+const sortBug = await post(bugs, sam.id, "The orders table doesn't sort by date anymore when filtered by status.");
+const resetBug = await post(bugs, alex.id, `${mentionToken(ownerU.id)} the password reset email goes to spam for Outlook users.`);
+const crashMsg = await post(
   bugs,
   sam.id,
   "```\nTypeError: Cannot read properties of undefined (reading 'total')\n    at summary.ts:42\n```\nSeen in the logs after yesterday's deploy.",
@@ -271,6 +272,227 @@ for (const m of mentions) {
     });
   }
 }
+
+/* ---------- Projects, labels, tickets (some built from the messages above) ---------- */
+
+const day = 86_400_000;
+const projectsSeed = [
+  { key: "APP", name: "Web app", color: "#26b5ce", visibility: "org" as const },
+  { key: "MOB", name: "Mobile app", color: "#5e6ad2", visibility: "org" as const },
+  { key: "OPS", name: "Back office", color: "#f2994a", visibility: "members" as const },
+];
+const projectIds: Record<string, string> = {};
+for (const p of projectsSeed) {
+  const id = newId();
+  projectIds[p.key] = id;
+  await db
+    .insert(s.project)
+    .values({ id, organizationId: org.id, ...p, ticketCounter: 0, createdBy: ownerU.id, createdAt: new Date(now - 20 * day) });
+}
+const projectMembers: [string, string, "lead" | "contributor" | "reporter" | "viewer"][] = [
+  ["APP", sam.id, "lead"],
+  ["APP", alex.id, "reporter"],
+  ["MOB", sam.id, "contributor"],
+  ["MOB", alex.id, "reporter"],
+  ["OPS", sam.id, "contributor"],
+];
+for (const [key, userId, role] of projectMembers) {
+  const projectId = projectIds[key] as string;
+  await db.insert(s.projectMember).values({ id: `${projectId}:${userId}`, organizationId: org.id, projectId, userId, role });
+}
+await db.update(s.channel).set({ projectId: projectIds.APP }).where(eq(s.channel.id, feedback));
+
+const labelIds: Record<string, string> = {};
+for (const [name, color] of [
+  ["Bug", "#eb5757"],
+  ["Feature", "#bb87fc"],
+  ["UX", "#26b5ce"],
+  ["Performance", "#f2c94c"],
+  ["Customer", "#f2994a"],
+] as const) {
+  labelIds[name] = newId();
+  await db.insert(s.label).values({ id: labelIds[name], organizationId: org.id, name, color });
+}
+
+const counters: Record<string, number> = { APP: 0, MOB: 0, OPS: 0 };
+async function ticket(t: {
+  project: "APP" | "MOB" | "OPS";
+  title: string;
+  status: "triage" | "backlog" | "todo" | "in_progress" | "in_review" | "done" | "canceled";
+  priority?: 0 | 1 | 2 | 3 | 4;
+  assignee?: string;
+  creator?: string;
+  labels?: string[];
+  sources?: string[];
+  description?: string;
+  daysAgo?: number;
+  via?: "app" | "mcp";
+}) {
+  const id = newId();
+  const number = ++counters[t.project];
+  const createdAt = new Date(now - (t.daysAgo ?? 1) * day);
+  const closed = t.status === "done" || t.status === "canceled";
+  await db.insert(s.ticket).values({
+    id,
+    organizationId: org.id,
+    projectId: projectIds[t.project] as string,
+    number,
+    title: t.title,
+    description: t.description ?? "",
+    status: t.status,
+    priority: t.priority ?? 0,
+    assigneeId: t.assignee ?? null,
+    creatorId: t.creator ?? ownerU.id,
+    createdVia: t.via ?? "app",
+    createdAt,
+    updatedAt: new Date(createdAt.getTime() + day / 2),
+    completedAt: closed ? new Date(createdAt.getTime() + day / 2) : null,
+  });
+  for (const l of t.labels ?? [])
+    await db.insert(s.ticketLabel).values({ organizationId: org.id, ticketId: id, labelId: labelIds[l] as string });
+  for (const messageId of t.sources ?? [])
+    await db.insert(s.ticketSource).values({ organizationId: org.id, ticketId: id, messageId, addedBy: t.creator ?? ownerU.id });
+  await db
+    .insert(s.activity)
+    .values({ id: `${id}:created`, organizationId: org.id, ticketId: id, actorId: t.creator ?? ownerU.id, kind: "created", createdAt });
+  if (t.sources?.length)
+    await db.insert(s.activity).values({
+      id: `${id}:linked`,
+      organizationId: org.id,
+      ticketId: id,
+      actorId: t.creator ?? ownerU.id,
+      kind: "linked_messages",
+      toValue: String(t.sources.length),
+      createdAt,
+    });
+  return id;
+}
+
+const exportTicket = await ticket({
+  project: "APP",
+  title: "Export button does nothing on Safari iOS",
+  status: "in_progress",
+  priority: 1,
+  assignee: sam.id,
+  creator: sam.id,
+  labels: ["Bug", "Customer"],
+  sources: [exportBug, shotMsg],
+  daysAgo: 0.2,
+  description:
+    "> **Alex Support** — A customer says the **export** button does nothing on Safari iOS.\n\nReproduced on iOS 17.5 (Safari). The `touchend` handler never fires on the button.",
+});
+await ticket({
+  project: "APP",
+  title: "Orders table ignores the date sort when filtered by status",
+  status: "todo",
+  priority: 2,
+  assignee: sam.id,
+  labels: ["Bug"],
+  sources: [sortBug],
+  daysAgo: 0.1,
+});
+await ticket({
+  project: "APP",
+  title: "TypeError in order summary after deploy",
+  status: "triage",
+  priority: 2,
+  labels: ["Bug"],
+  sources: [crashMsg],
+  daysAgo: 0.05,
+  via: "mcp",
+  description: "Created by an agent from a message in #bugs.",
+});
+await ticket({ project: "APP", title: "Keyboard shortcuts cheat sheet", status: "backlog", priority: 4, labels: ["UX"], daysAgo: 9 });
+await ticket({
+  project: "APP",
+  title: "Invoices list is slow above 1,000 rows",
+  status: "in_review",
+  priority: 3,
+  assignee: sam.id,
+  labels: ["Performance"],
+  daysAgo: 4,
+});
+await ticket({
+  project: "APP",
+  title: "Onboarding checklist for new workspaces",
+  status: "done",
+  priority: 3,
+  assignee: sam.id,
+  labels: ["Feature"],
+  daysAgo: 12,
+});
+await ticket({ project: "APP", title: "Legacy CSV importer", status: "canceled", priority: 0, daysAgo: 20 });
+await ticket({
+  project: "MOB",
+  title: "Push notification when an order ships",
+  status: "in_progress",
+  priority: 2,
+  assignee: sam.id,
+  labels: ["Feature"],
+  daysAgo: 6,
+});
+await ticket({ project: "MOB", title: "Offline mode for order drafts", status: "backlog", priority: 3, labels: ["Feature"], daysAgo: 15 });
+await ticket({
+  project: "MOB",
+  title: "App crashes when the camera permission is denied",
+  status: "todo",
+  priority: 1,
+  labels: ["Bug"],
+  daysAgo: 2,
+});
+await ticket({ project: "MOB", title: "Dark theme", status: "backlog", priority: 0, labels: ["UX", "Customer"], daysAgo: 8 });
+await ticket({
+  project: "OPS",
+  title: "Password reset email lands in spam (Outlook)",
+  status: "todo",
+  priority: 2,
+  assignee: ownerU.id,
+  labels: ["Bug", "Customer"],
+  sources: [resetBug],
+  daysAgo: 0.1,
+});
+await ticket({ project: "OPS", title: "Audit log of refunds", status: "backlog", priority: 3, labels: ["Feature"], daysAgo: 10 });
+await ticket({ project: "OPS", title: "Rotate the SMTP credentials", status: "done", priority: 2, assignee: sam.id, daysAgo: 7 });
+for (const [key, n] of Object.entries(counters))
+  await db
+    .update(s.project)
+    .set({ ticketCounter: n })
+    .where(eq(s.project.id, projectIds[key] as string));
+
+await db.insert(s.activity).values({
+  id: `${exportTicket}:status`,
+  organizationId: org.id,
+  ticketId: exportTicket,
+  actorId: sam.id,
+  kind: "status",
+  fromValue: "todo",
+  toValue: "in_progress",
+});
+await db.insert(s.comment).values([
+  {
+    id: newId(),
+    organizationId: org.id,
+    ticketId: exportTicket,
+    authorId: sam.id,
+    body: "Found it: iOS Safari fires `pointerup` but our handler only listens to `click` on a disabled parent. Fix incoming.",
+  },
+  {
+    id: newId(),
+    organizationId: org.id,
+    ticketId: exportTicket,
+    authorId: alex.id,
+    body: `Thanks ${mentionToken(sam.id)}! I'll tell the customer once it's shipped.`,
+  },
+]);
+await db.insert(s.notification).values({
+  id: `${exportTicket}:from-message:${alex.id}`,
+  organizationId: org.id,
+  userId: alex.id,
+  actorId: sam.id,
+  kind: "ticket_from_my_message",
+  ticketId: exportTicket,
+  body: "APP-1 Export button does nothing on Safari iOS",
+});
 
 console.log(`seed: organization "Demo" ready. Sign in with ${people[0].email} / ${password}`);
 await pool.end();

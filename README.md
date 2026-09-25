@@ -6,12 +6,12 @@ Most teams collect feedback in group chats: screenshots from support, bug report
 
 - **Chat**: public and private channels, direct messages, threads, @mentions, reactions, attachments (drag & drop or paste, image previews), unread counters.
 - **Messages → tickets**: select a message and its screenshot, create a ticket pre-filled from them, or link them to an existing ticket. Every ticket keeps its **source messages**, and the people who reported the problem are notified when it moves.
-- **Tickets**: projects, list and board views, statuses, priorities, labels and assignees, with keyboard-first navigation.
+- **Tickets**: projects with roles (lead, contributor, reporter, viewer) and visibility, list and board views, statuses, priorities, labels, assignees, comments and activity, keyboard-first navigation. Moving a ticket to another project keeps its former key working.
 - **Knowledge base**: Markdown documents with folder permissions and version history.
 - **AI-native**: a REST API and an **MCP server**, so agents like Claude Code can read conversations, turn feedback into tickets and pick up work, with exactly the permissions of the person using them.
 - **Fast**: every interaction is instant. Data is synced locally with [Zero](https://zero.rocicorp.dev), so the UI never waits for the network.
 
-> **Status: early development.** Milestones M0 (foundations) and M1 (chat) are done. See the [roadmap](#roadmap).
+> **Status: early development.** Milestones M0 (foundations), M1 (chat) and M2 (tickets) are done. See the [roadmap](#roadmap).
 
 ## Stack
 
@@ -37,7 +37,8 @@ pnpm dev            # Postgres + migrations + zero-cache + API + web → http://
 On a fresh instance, open the app. You're redirected to **/setup** to create your account and your organization, and you become its owner. Alternatively, load demo data:
 
 ```bash
-pnpm db:seed        # owner demo@example.com / demo-password, organization "Demo" with channels, a DM, a thread and an image
+pnpm db:seed        # owner demo@example.com / demo-password, organization "Demo": channels, a DM, a thread, an image,
+                    # 3 projects, labels and tickets (some built from chat messages, others left "unprocessed")
 ```
 
 | Command | What it does |
@@ -49,8 +50,8 @@ pnpm db:seed        # owner demo@example.com / demo-password, organization "Demo
 | `pnpm user:reset-password <email> [password]` | Reset a password without email configured |
 | `pnpm uploads:sweep [--dry-run] [--ttl-hours=N]` | Delete expired pending uploads and retry failed file deletions (also runs automatically; in Docker: `node dist/sweep-uploads.js`) |
 | `pnpm lint` · `pnpm typecheck` · `pnpm build` | Checks |
-| `pnpm test:e2e-sync` | Integration test on an isolated stack: auth, invitations, Zero writes, chat permissions, mentions, unread counters, attachments |
-| `pnpm analyze-query --cookie=… --user-id=… --query-name=… --query-args=…` | Query plan of a Zero query against a running zero-cache |
+| `pnpm test:e2e-sync` | Integration test on an isolated stack: auth, invitations, Zero writes, chat permissions, mentions, unread counters, attachments, project roles, concurrent ticket numbering, messages → tickets, comments, moves |
+| `pnpm analyze-query --zero-cache-url=http://localhost:4848 --admin-password=dev --cookie=… --user-id=… --query-name=… --query-args=…` | Query plan of a Zero query against a running zero-cache |
 
 Dev data lives in `.data/`. Delete that folder to start from scratch.
 
@@ -76,7 +77,7 @@ Four containers: `postgres` (with `wal_level=logical`), `api`, `zero-cache` and 
 |---|---|
 | ✅ M0 | Foundations: monorepo, Postgres + Zero + API, auth and invitations, app shell, working channel, Docker, CI |
 | ✅ M1 | Chat: public/private channels, direct messages, threads, mentions, reactions, attachments (disk or S3), unread counters |
-| M2 | Tickets: projects, list and board, **messages → ticket**, source messages, comments, activity |
+| ✅ M2 | Tickets: projects and roles, list and board, **messages → ticket**, source messages, comments, activity |
 | M3 | Notifications, ⌘K command menu, full-text search |
 | M4 | Knowledge base: Markdown documents, versions, permissions |
 | M5 | REST API v1, **MCP server**, CLI |

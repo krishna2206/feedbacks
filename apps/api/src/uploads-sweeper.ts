@@ -135,6 +135,8 @@ export function startUploadSweeper() {
           console.log(`[uploads] sweep: ${r.expiredPending} expired uploads, ${r.deletedFiles} files deleted, ${r.failedFiles} failed`);
       })
       .catch((e) => console.warn(`[uploads] sweep failed: ${(e as Error).message}`));
+  // 0 disables the in-process sweeper entirely (startup run included): sweep with the CLI instead
+  if (env.uploadSweepIntervalMin <= 0) return;
   setTimeout(run, 5_000).unref();
-  if (env.uploadSweepIntervalMin > 0) setInterval(run, env.uploadSweepIntervalMin * 60_000).unref();
+  setInterval(run, env.uploadSweepIntervalMin * 60_000).unref();
 }

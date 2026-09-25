@@ -1,7 +1,7 @@
 // `pnpm test:e2e-sync`: boots an isolated stack (temporary data dir, dedicated ports,
 // no web server), runs apps/api/test/e2e-sync.ts against it, then tears everything down.
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root } from "./lib/env.mjs";
@@ -16,6 +16,8 @@ const env = {
   WEB_PORT: "5321",
   APP_URL: "http://localhost:5322",
   DEV_SKIP_WEB: "1",
+  // The test drives the sweeper through the CLI: the API's own startup sweep would race with it
+  UPLOAD_SWEEP_INTERVAL_MIN: "0",
 };
 delete env.DATABASE_URL;
 
@@ -59,6 +61,8 @@ try {
   await new Promise((r) => stack.once("exit", r));
   rmSync(dataDir, { recursive: true, force: true });
 }
+// E2E_LOG=<file> keeps the full stack log (debugging)
+if (process.env.E2E_LOG) writeFileSync(process.env.E2E_LOG, log);
 // Strip ANSI colors (ESC [ … m) from the captured log
 const ESC = String.fromCharCode(27);
 if (status !== 0) console.error(`\n--- stack log (tail) ---\n${log.replaceAll(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "").slice(-3000)}`);

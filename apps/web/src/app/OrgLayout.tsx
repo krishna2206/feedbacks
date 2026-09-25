@@ -1,22 +1,32 @@
 import { mutators, schema } from "@feedbacks/schema/zero";
 import { ZeroProvider } from "@rocicorp/zero/react";
 import { Outlet } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import "./layout.css";
 import { useOrg } from "./org-context";
 import { Sidebar } from "./Sidebar";
 import { setSidebar, useSidebar } from "./sidebar-state";
+import { openCreateTicket, useCreateTicketDraft } from "./tickets/data";
+
+// The dialog (and its chunk) loads the first time it's opened
+const CreateTicketModal = lazy(() => import("./tickets/CreateTicketModal").then((m) => ({ default: m.CreateTicketModal })));
 
 /** Signed-in app shell. Zero syncs through the same origin: /sync → zero-cache (cookies forwarded). */
 export function OrgLayout() {
   const { user } = useOrg();
   const { collapsed } = useSidebar();
+  const draft = useCreateTicketDraft();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       if (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "[") setSidebar({ collapsed: !collapsed });
+      // `c` = new ticket, except where a page handles it (channel selection, project page)
+      else if (e.key === "c" && !document.querySelector(".popover, .modal-backdrop") && !/\/(c|projects)\//.test(location.pathname)) {
+        e.preventDefault();
+        openCreateTicket();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -30,6 +40,11 @@ export function OrgLayout() {
           <main className="main">
             <Outlet />
           </main>
+          {draft && (
+            <Suspense fallback={null}>
+              <CreateTicketModal />
+            </Suspense>
+          )}
         </div>
       </div>
     </ZeroProvider>

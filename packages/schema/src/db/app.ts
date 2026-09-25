@@ -16,6 +16,7 @@ import type {
   NotificationKind,
   PrincipalType,
   ProjectRole,
+  ProjectVisibility,
   TicketPriority,
   TicketStatus,
 } from "../enums";
@@ -42,12 +43,15 @@ export const project = pgTable(
     key: text("key").notNull(),
     name: text("name").notNull(),
     color: text("color").notNull(),
+    /** Who can read the project's tickets without being a project member (see ProjectVisibility) */
+    visibility: text("visibility").$type<ProjectVisibility>().notNull().default("org"),
     /** Last ticket number handed out (server-side counter) */
     ticketCounter: integer("ticket_counter").notNull().default(0),
+    createdBy: userRef("created_by"),
     createdAt: createdAt(),
     archivedAt: timestampTz("archived_at"),
   },
-  (t) => [uniqueIndex("project_org_key_uq").on(t.organizationId, t.key)],
+  (t) => [uniqueIndex("project_org_key_uq").on(t.organizationId, t.key), index("project_org_name_idx").on(t.organizationId, t.name, t.id)],
 );
 
 export const projectMember = pgTable(
@@ -64,7 +68,11 @@ export const projectMember = pgTable(
     role: text("role").$type<ProjectRole>().notNull(),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("project_member_uq").on(t.projectId, t.userId), index("project_member_user_idx").on(t.userId)],
+  (t) => [
+    uniqueIndex("project_member_uq").on(t.projectId, t.userId),
+    index("project_member_project_idx").on(t.projectId, t.createdAt, t.id),
+    index("project_member_user_idx").on(t.userId),
+  ],
 );
 
 export const label = pgTable(
@@ -76,7 +84,7 @@ export const label = pgTable(
     color: text("color").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("label_org_idx").on(t.organizationId)],
+  (t) => [uniqueIndex("label_org_name_uq").on(t.organizationId, t.name), index("label_org_idx").on(t.organizationId, t.name, t.id)],
 );
 
 /* ------------------------------------------------------------------ */
@@ -151,6 +159,8 @@ export const message = pgTable(
     seq: integer("seq"),
     /** Thread summary kept on the parent so lists never count replies */
     replyCount: integer("reply_count").notNull().default(0),
+    /** Number of tickets built from this message (maintained by a trigger on ticket_source); 0 = unprocessed */
+    ticketCount: integer("ticket_count").notNull().default(0),
     lastReplyAt: timestampTz("last_reply_at"),
     createdAt: createdAt(),
     editedAt: timestampTz("edited_at"),
@@ -159,6 +169,8 @@ export const message = pgTable(
   (t) => [
     // Zero always appends the primary key to ORDER BY: indexes end with `id`
     index("message_channel_created_idx").on(t.channelId, t.createdAt, t.id),
+    // "Unprocessed" tab: top-level messages without tickets, newest first
+    index("message_channel_unprocessed_idx").on(t.channelId, t.ticketCount, t.createdAt, t.id),
     index("message_parent_idx").on(t.parentId, t.createdAt, t.id),
     index("message_author_idx").on(t.authorId),
   ],
@@ -206,6 +218,7 @@ export const reaction = pgTable(
     uniqueIndex("reaction_message_uq").on(t.messageId, t.userId, t.emoji),
     index("reaction_message_created_idx").on(t.messageId, t.createdAt, t.id),
     uniqueIndex("reaction_comment_uq").on(t.commentId, t.userId, t.emoji),
+    index("reaction_comment_created_idx").on(t.commentId, t.createdAt, t.id),
   ],
 );
 
@@ -236,9 +249,34 @@ export const ticket = pgTable(
   },
   (t) => [
     uniqueIndex("ticket_project_number_uq").on(t.projectId, t.number),
-    index("ticket_org_status_idx").on(t.organizationId, t.status),
-    index("ticket_assignee_idx").on(t.assigneeId),
+    index("ticket_project_updated_idx").on(t.projectId, t.updatedAt, t.id),
+    // "Recent tickets" (link picker, command menu)
+    index("ticket_org_updated_idx").on(t.organizationId, t.updatedAt, t.id),
+    index("ticket_assignee_idx").on(t.assigneeId, t.updatedAt, t.id),
+    index("ticket_creator_idx").on(t.creatorId, t.updatedAt, t.id),
   ],
+);
+
+/**
+ * Former keys of tickets moved to another project: APP-12 moved to OPS becomes OPS-3,
+ * and links to APP-12 keep working. Project counters never go back, so numbers are never reused.
+ */
+export const ticketAlias = pgTable(
+  "ticket_alias",
+  {
+    /** `${projectId}:${number}` */
+    id: text("id").primaryKey(),
+    organizationId: orgId(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    ticketId: text("ticket_id")
+      .notNull()
+      .references(() => ticket.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("ticket_alias_project_number_uq").on(t.projectId, t.number), index("ticket_alias_ticket_idx").on(t.ticketId, t.id)],
 );
 
 export const ticketLabel = pgTable(
@@ -252,7 +290,7 @@ export const ticketLabel = pgTable(
       .notNull()
       .references(() => label.id, { onDelete: "cascade" }),
   },
-  (t) => [primaryKey({ columns: [t.ticketId, t.labelId] }), index("ticket_label_label_idx").on(t.labelId)],
+  (t) => [primaryKey({ columns: [t.ticketId, t.labelId] }), index("ticket_label_label_idx").on(t.labelId, t.ticketId)],
 );
 
 /** N:N link between a ticket and the chat messages it was built from */
@@ -269,7 +307,11 @@ export const ticketSource = pgTable(
     addedBy: userRef("added_by"),
     addedAt: timestampTz("added_at").defaultNow().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.ticketId, t.messageId] }), index("ticket_source_message_idx").on(t.messageId)],
+  (t) => [
+    primaryKey({ columns: [t.ticketId, t.messageId] }),
+    index("ticket_source_ticket_idx").on(t.ticketId, t.addedAt, t.messageId),
+    index("ticket_source_message_idx").on(t.messageId, t.ticketId),
+  ],
 );
 
 export const comment = pgTable(
@@ -285,7 +327,7 @@ export const comment = pgTable(
     createdAt: createdAt(),
     editedAt: timestampTz("edited_at"),
   },
-  (t) => [index("comment_ticket_idx").on(t.ticketId, t.createdAt)],
+  (t) => [index("comment_ticket_idx").on(t.ticketId, t.createdAt, t.id)],
 );
 
 export const activity = pgTable(
@@ -302,7 +344,7 @@ export const activity = pgTable(
     toValue: text("to_value"),
     createdAt: createdAt(),
   },
-  (t) => [index("activity_ticket_idx").on(t.ticketId, t.createdAt)],
+  (t) => [index("activity_ticket_idx").on(t.ticketId, t.createdAt, t.id)],
 );
 
 export const notification = pgTable(
@@ -325,7 +367,7 @@ export const notification = pgTable(
     createdAt: createdAt(),
     readAt: timestampTz("read_at"),
   },
-  (t) => [index("notification_user_idx").on(t.userId, t.createdAt)],
+  (t) => [index("notification_user_idx").on(t.userId, t.createdAt, t.id)],
 );
 
 /* ------------------------------------------------------------------ */

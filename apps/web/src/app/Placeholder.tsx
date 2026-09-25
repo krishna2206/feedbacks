@@ -26,10 +26,6 @@ export function InboxPlaceholder() {
   const { t } = useTranslation();
   return <Placeholder title={t("nav.inbox")} icon="inbox" text={t("placeholder.inbox")} />;
 }
-export function TicketsPlaceholder() {
-  const { t } = useTranslation();
-  return <Placeholder title={t("nav.tickets")} icon="target" text={t("placeholder.tickets")} />;
-}
 export function DocsPlaceholder() {
   const { t } = useTranslation();
   return <Placeholder title={t("nav.docs")} icon="doc" text={t("placeholder.docs")} />;

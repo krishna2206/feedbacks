@@ -13,9 +13,13 @@ export function useOrgMembers() {
     const current = orgs.find((o) => o.id === org.id);
     const members = current?.members ?? [];
     const users = new Map<string, OrgUser>();
-    for (const m of members) if (m.user) users.set(m.user.id, m.user as OrgUser);
+    const roles = new Map<string, string>();
+    for (const m of members) {
+      if (m.user) users.set(m.user.id, m.user as OrgUser);
+      roles.set(m.userId, m.role ?? "member");
+    }
     const myRole = members.find((m) => m.userId === user.id)?.role ?? "member";
     const sorted = [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
-    return { users, sorted, myRole, isAdmin: myRole === "owner" || myRole === "admin" };
+    return { users, sorted, roles, myRole, isAdmin: myRole === "owner" || myRole === "admin" };
   }, [orgs, org.id, user.id]);
 }
