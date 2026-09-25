@@ -12,12 +12,23 @@ export function SetupPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [ready, setReady] = useState<boolean | null>(null);
-  const [form, setForm] = useState({ name: "", email: "", password: "", org: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    org: "",
+    // Public deployments protect setup with SETUP_TOKEN; the link can carry it as ?token=…
+    token: new URLSearchParams(window.location.search).get("token") ?? "",
+  });
+  const [tokenRequired, setTokenRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void getInstance().then((i) => setReady(i.needsSetup));
+    void getInstance().then((i) => {
+      setReady(i.needsSetup);
+      setTokenRequired(i.setupTokenRequired);
+    });
   }, []);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
@@ -27,17 +38,25 @@ export function SetupPage() {
     setBusy(true);
     setError(null);
     const info = await refreshInstance();
+    const fetchOptions = form.token ? { headers: { "x-setup-token": form.token.trim() } } : undefined;
     // Account (skipped if the owner already created it and setup was interrupted)
     if (!info.hasUsers) {
-      const r = await authClient.signUp.email({ name: form.name.trim(), email: form.email.trim(), password: form.password });
-      if (r.error) return setBusy(false), setError(r.error.message ?? "Error");
+      const r = await authClient.signUp.email({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        fetchOptions,
+      });
+      if (r.error)
+        return setBusy(false), setError(r.error.status === 403 && tokenRequired ? t("setup.invalidToken") : (r.error.message ?? "Error"));
     } else {
       const r = await authClient.signIn.email({ email: form.email.trim(), password: form.password });
       if (r.error) return setBusy(false), setError(t("auth.invalidCredentials"));
     }
     const slug = slugify(form.org);
-    const org = await authClient.organization.create({ name: form.org.trim(), slug });
-    if (org.error) return setBusy(false), setError(org.error.message ?? "Error");
+    const org = await authClient.organization.create({ name: form.org.trim(), slug, fetchOptions });
+    if (org.error)
+      return setBusy(false), setError(org.error.status === 403 && tokenRequired ? t("setup.invalidToken") : (org.error.message ?? "Error"));
     await authClient.organization.setActive({ organizationId: org.data.id });
     await refreshInstance();
     void navigate({ to: "/$orgSlug", params: { orgSlug: slug } });
@@ -55,6 +74,19 @@ export function SetupPage() {
   return (
     <AuthLayout title={t("setup.title")} subtitle={t("setup.subtitle")} wide>
       <form className="auth__form" onSubmit={submit}>
+        {tokenRequired && (
+          <Field label={t("setup.token")}>
+            <input
+              className="input"
+              required
+              autoComplete="off"
+              spellCheck={false}
+              value={form.token}
+              onChange={set("token")}
+              placeholder={t("setup.tokenPlaceholder")}
+            />
+          </Field>
+        )}
         <div className="auth__section">{t("setup.yourAccount")}</div>
         <Field label={t("auth.name")}>
           <input className="input" required autoFocus autoComplete="name" value={form.name} onChange={set("name")} />

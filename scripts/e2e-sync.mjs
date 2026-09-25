@@ -20,6 +20,8 @@ const env = {
   UPLOAD_SWEEP_INTERVAL_MIN: "0",
   // Low enough for e2e-agents.ts to hit it with a burst, high enough for the rest of the suite
   API_RATE_LIMIT_PER_MIN: "150",
+  // Public-instance guard: the first account and organization need this token
+  SETUP_TOKEN: "e2e-setup-token",
 };
 delete env.DATABASE_URL;
 

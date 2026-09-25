@@ -1,0 +1,48 @@
+# Garage: a light, S3-compatible object store for Feedbacks attachments (single node).
+# Dokploy › Compose › Provider: GitHub, Compose path: ./deploy/dokploy/garage.compose.yml
+# Environment: GARAGE_RPC_SECRET (`openssl rand -hex 32`), GARAGE_ADMIN_TOKEN (`openssl rand -base64 32`).
+# No published port and no domain: only services on `dokploy-network` (the Feedbacks API) reach it.
+# First run: see "Garage initialisation" in README.md next to this file.
+name: feedbacks-garage
+
+services:
+  feedbacks-garage:
+    image: dxflrs/garage:v2.4.1
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?}
+    configs:
+      - source: garage_toml
+        target: /etc/garage.toml
+    volumes:
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    networks: [dokploy-network]
+
+configs:
+  garage_toml:
+    # Secrets come from the environment variables above (GARAGE_RPC_SECRET, GARAGE_ADMIN_TOKEN)
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "sqlite"
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "127.0.0.1:3901"
+
+      [s3_api]
+      s3_region = "garage"
+      api_bind_addr = "[::]:3900"
+      root_domain = ".s3.garage.internal"
+
+      [admin]
+      api_bind_addr = "[::]:3903"
+
+volumes:
+  garage-meta:
+  garage-data:
+
+networks:
+  dokploy-network:
+    external: true

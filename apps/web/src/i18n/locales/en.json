@@ -51,7 +51,10 @@
     "orgNamePlaceholder": "Acme Inc.",
     "submit": "Create workspace",
     "submitting": "Creating…",
-    "alreadyDone": "This instance is already set up."
+    "alreadyDone": "This instance is already set up.",
+    "token": "Setup token",
+    "tokenPlaceholder": "Provided by whoever deployed this instance",
+    "invalidToken": "Invalid setup token."
   },
   "invite": {
     "title": "Join {{org}}",

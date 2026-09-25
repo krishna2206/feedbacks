@@ -1,6 +1,8 @@
 export interface InstanceInfo {
   needsSetup: boolean;
   hasUsers: boolean;
+  /** The instance requires SETUP_TOKEN to be created (public deployments) */
+  setupTokenRequired: boolean;
   googleEnabled: boolean;
   emailEnabled: boolean;
 }

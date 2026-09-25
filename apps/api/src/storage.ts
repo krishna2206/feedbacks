@@ -4,7 +4,9 @@
  *  - `s3`: any S3-compatible service (AWS, OCI Object Storage, MinIO, R2…), signed with
  *    aws4fetch (a few KB) rather than the AWS SDK.
  * Downloads are always authorized by the API first (see routes/files.ts): local files are
- * streamed by the API, S3 objects are served through a short-lived presigned URL.
+ * streamed by the API; S3 objects are either served through a short-lived presigned URL
+ * (`S3_DOWNLOADS=redirect`, default: the bucket endpoint must be reachable by browsers) or
+ * streamed by the API (`S3_DOWNLOADS=proxy`: the bucket can stay on a private network).
  */
 import { createReadStream } from "node:fs";
 import { mkdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
@@ -20,7 +22,7 @@ export interface StoredObject {
 
 export interface Storage {
   put(key: string, data: Uint8Array, contentType: string): Promise<void>;
-  /** Local driver: the object itself */
+  /** The object itself, streamed by the API (local driver, or S3 in proxy mode) */
   get?(key: string): Promise<StoredObject | null>;
   /** Remote drivers: a short-lived URL the browser can follow */
   signedUrl?(key: string, opts: { expiresIn: number; contentType: string; disposition: string }): Promise<string>;
@@ -60,7 +62,14 @@ function localStorage(dir: string): Storage {
   };
 }
 
-function s3Storage(cfg: { endpoint: string; bucket: string; region: string; accessKeyId: string; secretAccessKey: string }): Storage {
+function s3Storage(cfg: {
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  downloads: "redirect" | "proxy";
+}): Storage {
   const aws = new AwsClient({ accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey, service: "s3", region: cfg.region });
   // Path-style URLs work with every S3-compatible provider
   const url = (key: string) => `${cfg.endpoint}/${cfg.bucket}/${key.split("/").map(encodeURIComponent).join("/")}`;
@@ -69,14 +78,27 @@ function s3Storage(cfg: { endpoint: string; bucket: string; region: string; acce
       const res = await aws.fetch(url(key), { method: "PUT", body: data, headers: { "content-type": contentType } });
       if (!res.ok) throw new Error(`S3 upload failed: ${res.status} ${await res.text()}`);
     },
-    async signedUrl(key, { expiresIn, contentType, disposition }) {
-      const u = new URL(url(key));
-      u.searchParams.set("X-Amz-Expires", String(expiresIn));
-      u.searchParams.set("response-content-type", contentType);
-      u.searchParams.set("response-content-disposition", disposition);
-      const signed = await aws.sign(u.toString(), { method: "GET", aws: { signQuery: true } });
-      return signed.url;
+    async get(key) {
+      const res = await aws.fetch(url(key), { method: "GET" });
+      if (res.status === 404) return null;
+      if (!res.ok || !res.body) throw new Error(`S3 download failed: ${res.status} ${await res.text()}`);
+      return { body: res.body, size: Number(res.headers.get("content-length") ?? 0) };
     },
+    ...(cfg.downloads === "redirect"
+      ? {
+          async signedUrl(
+            key: string,
+            { expiresIn, contentType, disposition }: { expiresIn: number; contentType: string; disposition: string },
+          ) {
+            const u = new URL(url(key));
+            u.searchParams.set("X-Amz-Expires", String(expiresIn));
+            u.searchParams.set("response-content-type", contentType);
+            u.searchParams.set("response-content-disposition", disposition);
+            const signed = await aws.sign(u.toString(), { method: "GET", aws: { signQuery: true } });
+            return signed.url;
+          },
+        }
+      : {}),
     async delete(key) {
       const res = await aws.fetch(url(key), { method: "DELETE" });
       if (!res.ok && res.status !== 404) throw new Error(`S3 delete failed: ${res.status} ${await res.text()}`);

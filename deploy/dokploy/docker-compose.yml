@@ -1,0 +1,86 @@
+# Feedbacks on Dokploy (Docker Swarm node): the application services only.
+# Postgres (Dokploy database, started with wal_level=logical) and Garage (garage.compose.yml)
+# are separate services of the same Dokploy project, reached over `dokploy-network`.
+#
+# Dokploy › Compose › Provider: GitHub, Compose path: ./deploy/dokploy/docker-compose.yml
+# Domain: your host → service `feedbacks-web`, port 80. Environment: see README.md next to this file.
+#
+# Service names are prefixed because `dokploy-network` is shared with every other stack on the
+# node: a generic `api` or `web` could resolve to someone else's container.
+name: feedbacks
+
+services:
+  feedbacks-api:
+    build: { context: ../.., dockerfile: apps/api/Dockerfile }
+    restart: unless-stopped
+    environment:
+      APP_URL: ${APP_URL:?}
+      DATABASE_URL: ${DATABASE_URL:?}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://feedbacks-garage:3900}
+      S3_BUCKET: ${S3_BUCKET:-feedbacks}
+      S3_REGION: ${S3_REGION:-garage}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+      # Garage stays on the private network: the API streams attachments after its permission check
+      S3_DOWNLOADS: proxy
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB:-25}
+      UPLOAD_PENDING_TTL_HOURS: ${UPLOAD_PENDING_TTL_HOURS:-24}
+      UPLOAD_SWEEP_INTERVAL_MIN: ${UPLOAD_SWEEP_INTERVAL_MIN:-1440}
+      DOCS_TRASH_DAYS: ${DOCS_TRASH_DAYS:-30}
+      API_RATE_LIMIT_PER_MIN: ${API_RATE_LIMIT_PER_MIN:-300}
+      API_WRITE_RATE_LIMIT_PER_MIN: ${API_WRITE_RATE_LIMIT_PER_MIN:-60}
+    networks: [default, dokploy-network]
+
+  feedbacks-zero:
+    image: rocicorp/zero:1.9.0
+    restart: unless-stopped
+    stop_grace_period: 1m
+    depends_on: { feedbacks-api: { condition: service_healthy } }
+    environment:
+      ZERO_UPSTREAM_DB: ${DATABASE_URL:?}
+      ZERO_CVR_DB: ${DATABASE_URL:?}
+      ZERO_CHANGE_DB: ${DATABASE_URL:?}
+      ZERO_REPLICA_FILE: /data/replica.db
+      ZERO_APP_PUBLICATIONS: zero_data
+      ZERO_ADMIN_PASSWORD: ${ZERO_ADMIN_PASSWORD:?}
+      ZERO_QUERY_URL: http://feedbacks-api:3000/api/zero/query
+      ZERO_MUTATE_URL: http://feedbacks-api:3000/api/zero/mutate
+      ZERO_QUERY_FORWARD_COOKIES: "true"
+      ZERO_MUTATE_FORWARD_COOKIES: "true"
+      ZERO_ENABLE_CRUD_MUTATIONS: "false"
+      ZERO_LOG_LEVEL: warn
+    volumes:
+      - zero-data:/data
+    healthcheck:
+      # node is always in the image (curl may not be)
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4848/keepalive').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      start_period: 2m
+    networks: [default, dokploy-network]
+
+  feedbacks-web:
+    build: { context: ../.., dockerfile: apps/web/Dockerfile }
+    restart: unless-stopped
+    depends_on: [feedbacks-api, feedbacks-zero]
+    environment:
+      API_UPSTREAM: feedbacks-api:3000
+      ZERO_UPSTREAM: feedbacks-zero:4848
+    # No published port: Traefik (Dokploy domain) is the only way in
+    networks: [default, dokploy-network]
+
+volumes:
+  zero-data:
+
+networks:
+  dokploy-network:
+    external: true

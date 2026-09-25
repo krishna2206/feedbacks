@@ -51,7 +51,10 @@
     "orgNamePlaceholder": "Acme SAS",
     "submit": "Créer l'espace",
     "submitting": "Création…",
-    "alreadyDone": "Cette instance est déjà configurée."
+    "alreadyDone": "Cette instance est déjà configurée.",
+    "token": "Jeton d'installation",
+    "tokenPlaceholder": "Fourni par la personne qui a déployé cette instance",
+    "invalidToken": "Jeton d'installation invalide."
   },
   "invite": {
     "title": "Rejoindre {{org}}",

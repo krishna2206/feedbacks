@@ -60,7 +60,7 @@ Dev data lives in `.data/`. Delete that folder to start from scratch.
 ## Self-host
 
 ```bash
-cp .env.example .env     # set APP_URL, POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ZERO_ADMIN_PASSWORD
+cp .env.example .env     # set APP_URL, POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ZERO_ADMIN_PASSWORD, SETUP_TOKEN
 docker compose up -d     # → http://localhost:8080 (HTTP_PORT)
 ```
 
@@ -68,7 +68,7 @@ Four containers: `postgres` (with `wal_level=logical`), `api`, `zero-cache` and 
 
 ### Access model
 
-- A **fresh instance** lets the first person sign up: they create the organization and become its **owner**.
+- A **fresh instance** lets the first person sign up: they create the organization and become its **owner**. On a public instance, set `SETUP_TOKEN` and open `/setup?token=…` yourself: without the token, nobody can claim the instance.
 - After that, **sign-up is invitation-only**. The owner and admins invite people by email and choose their role. The invitation link lets the invitee set a name and password and join.
 - **Email is optional.** Without SMTP (`SMTP_*`), invitation and password-reset links are printed in the API logs, and owners can copy invitation links from the UI. `pnpm user:reset-password` resets a password from the server.
 - **Google sign-in** is enabled only when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set. Register `${APP_URL}/api/auth/callback/google` as a redirect URI.

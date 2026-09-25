@@ -11,6 +11,9 @@ export const env = {
   appUrl: required("APP_URL").replace(/\/$/, ""),
   databaseUrl: required("DATABASE_URL"),
   authSecret: required("BETTER_AUTH_SECRET"),
+  /** When set, the first-run setup (owner account + organization) requires this token, so a public
+   *  instance can't be claimed by whoever reaches /setup first. Unused once the instance is set up. */
+  setupToken: process.env.SETUP_TOKEN || null,
   google:
     process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }
@@ -34,6 +37,9 @@ export const env = {
           region: process.env.S3_REGION ?? "us-east-1",
           accessKeyId: required("S3_ACCESS_KEY_ID"),
           secretAccessKey: required("S3_SECRET_ACCESS_KEY"),
+          /** "redirect": browsers download from a presigned URL (endpoint must be public);
+           *  "proxy": the API streams objects, so the bucket can stay private */
+          downloads: process.env.S3_DOWNLOADS === "proxy" ? ("proxy" as const) : ("redirect" as const),
         }
       : { driver: "local" as const, dir: process.env.UPLOADS_DIR ?? `${process.env.DATA_DIR ?? "./data"}/uploads` },
   /** Maximum size of one uploaded file */

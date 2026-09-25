@@ -15,6 +15,7 @@ export function mountPublic(app: Hono) {
     c.json({
       needsSetup: !(await instanceHasUsers()) || !(await instanceHasOrganization()),
       hasUsers: await instanceHasUsers(),
+      setupTokenRequired: env.setupToken !== null,
       googleEnabled: env.google !== null,
       emailEnabled,
     }),

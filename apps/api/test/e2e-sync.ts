@@ -22,10 +22,15 @@ await db.connect();
 
 type Session = { token: string; cookie: string; userId: string };
 
-async function authPost(path: string, body: unknown, s?: Session) {
+async function authPost(path: string, body: unknown, s?: Session, extraHeaders: Record<string, string> = {}) {
   const res = await fetch(`${API}/api/auth${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", origin: process.env.APP_URL ?? API, ...(s ? { cookie: s.cookie } : {}) },
+    headers: {
+      "content-type": "application/json",
+      origin: process.env.APP_URL ?? API,
+      ...(s ? { cookie: s.cookie } : {}),
+      ...extraHeaders,
+    },
     body: JSON.stringify(body),
   });
   // biome-ignore lint/suspicious/noExplicitAny: loose JSON in a test
@@ -33,8 +38,8 @@ async function authPost(path: string, body: unknown, s?: Session) {
   return { res, json };
 }
 
-async function signUp(name: string, email: string): Promise<Session> {
-  const { res, json } = await authPost("/sign-up/email", { name, email, password: "correct-horse-battery" });
+async function signUp(name: string, email: string, extraHeaders: Record<string, string> = {}): Promise<Session> {
+  const { res, json } = await authPost("/sign-up/email", { name, email, password: "correct-horse-battery" }, undefined, extraHeaders);
   assert.equal(res.status, 200, `sign-up ${email}: ${res.status} ${JSON.stringify(json)}`);
   return {
     token: res.headers.get("set-auth-token") ?? "",
@@ -52,9 +57,23 @@ function zeroFor(s: Session) {
 
 const step = (msg: string) => console.log(`✓ ${msg}`);
 
+// 0. Fresh public instance: claiming it needs SETUP_TOKEN (set by scripts/e2e-sync.mjs)
+const SETUP_TOKEN = process.env.SETUP_TOKEN ?? "";
+assert.ok(SETUP_TOKEN, "the e2e stack runs with SETUP_TOKEN");
+const ownerBody = { name: "Olivia Owner", email: "owner@example.com", password: "correct-horse-battery" };
+const noToken = await authPost("/sign-up/email", ownerBody);
+assert.equal(noToken.res.status, 403, "first sign-up without the setup token is refused");
+const badToken = await authPost("/sign-up/email", ownerBody, undefined, { "x-setup-token": "not-the-token" });
+assert.equal(badToken.res.status, 403, "first sign-up with a wrong setup token is refused");
+assert.equal((await db.query('select count(*)::int as n from "user"')).rows[0].n, 0, "no account was created");
+step("setup token: fresh instance can't be claimed without it");
+
 // 1. Fresh instance: first user creates the organization and becomes owner
-const owner = await signUp("Olivia Owner", "owner@example.com");
-const created = await authPost("/organization/create", { name: "Acme", slug: "acme" }, owner);
+const setupHeaders = { "x-setup-token": SETUP_TOKEN };
+const owner = await signUp("Olivia Owner", "owner@example.com", setupHeaders);
+const orgNoToken = await authPost("/organization/create", { name: "Acme", slug: "acme" }, owner);
+assert.equal(orgNoToken.res.status, 403, "first organization without the setup token is refused");
+const created = await authPost("/organization/create", { name: "Acme", slug: "acme" }, owner, setupHeaders);
 assert.equal(created.res.status, 200, JSON.stringify(created.json));
 const orgId: string = created.json.id;
 const general = (await db.query("select id from channel where organization_id = $1 and name = 'general'", [orgId])).rows[0];
