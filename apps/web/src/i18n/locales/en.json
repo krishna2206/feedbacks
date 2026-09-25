@@ -509,7 +509,8 @@
       "members": "Members",
       "teams": "Teams",
       "tokens": "API tokens",
-      "integrations": "Integrations"
+      "integrations": "Integrations",
+      "account": "Account"
     },
     "notifications": {
       "title": "Notifications",
@@ -884,5 +885,18 @@
     "apiTitle": "REST API",
     "apiIntro": "Everything the CLI and the MCP server do goes through the REST API v1, documented with OpenAPI.",
     "apiReference": "API reference"
+  },
+  "account": {
+    "title": "Account",
+    "password": "Password",
+    "passwordIntro": "Changing your password signs you out everywhere else.",
+    "current": "Current password",
+    "new": "New password (8+ characters)",
+    "confirm": "Confirm new password",
+    "change": "Change password",
+    "saving": "Saving…",
+    "changed": "Password changed",
+    "mismatch": "The new passwords don't match.",
+    "wrongCurrent": "Current password is incorrect."
   }
 }

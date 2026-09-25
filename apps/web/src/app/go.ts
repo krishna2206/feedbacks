@@ -28,7 +28,7 @@ export function useGo() {
       doc: (docId: string, opts: { edit?: boolean; history?: boolean } = {}) =>
         navigate({ to: "/$orgSlug/docs/d/$docId", params: { orgSlug, docId }, search: opts }),
       search: (q?: string) => navigate({ to: "/$orgSlug/search", params: { orgSlug }, search: q ? { q } : {} }),
-      settings: (page: "notifications" | "members" | "teams" | "tokens" | "integrations" = "notifications") =>
+      settings: (page: "account" | "notifications" | "members" | "teams" | "tokens" | "integrations" = "notifications") =>
         navigate({ to: `/$orgSlug/settings/${page}` as "/$orgSlug/settings/notifications", params: { orgSlug } }),
     };
   }, [navigate, org.slug]);

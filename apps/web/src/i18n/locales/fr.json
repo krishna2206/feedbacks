@@ -509,7 +509,8 @@
       "members": "Membres",
       "teams": "Équipes",
       "tokens": "Jetons d'API",
-      "integrations": "Intégrations"
+      "integrations": "Intégrations",
+      "account": "Compte"
     },
     "notifications": {
       "title": "Notifications",
@@ -884,5 +885,18 @@
     "apiTitle": "API REST",
     "apiIntro": "Tout ce que font le CLI et le serveur MCP passe par l'API REST v1, documentée en OpenAPI.",
     "apiReference": "Référence de l'API"
+  },
+  "account": {
+    "title": "Compte",
+    "password": "Mot de passe",
+    "passwordIntro": "Changer de mot de passe te déconnecte de tes autres sessions.",
+    "current": "Mot de passe actuel",
+    "new": "Nouveau mot de passe (8 caractères min.)",
+    "confirm": "Confirmer le nouveau mot de passe",
+    "change": "Changer le mot de passe",
+    "saving": "Enregistrement…",
+    "changed": "Mot de passe modifié",
+    "mismatch": "Les nouveaux mots de passe ne correspondent pas.",
+    "wrongCurrent": "Le mot de passe actuel est incorrect."
   }
 }

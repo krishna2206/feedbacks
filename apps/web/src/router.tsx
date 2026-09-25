@@ -166,6 +166,11 @@ const settingsRoute = createRoute({
     throw redirect({ to: "/$orgSlug/settings/notifications", params: { orgSlug: params.orgSlug } });
   },
 });
+const accountRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/settings/account",
+  component: lazyRouteComponent(() => import("./app/settings/AccountPage"), "AccountPage"),
+});
 const notificationSettingsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/settings/notifications",
@@ -213,6 +218,7 @@ const routeTree = rootRoute.addChildren([
     docsTrashRoute,
     docRoute,
     settingsRoute,
+    accountRoute,
     notificationSettingsRoute,
     membersRoute,
     teamsRoute,
