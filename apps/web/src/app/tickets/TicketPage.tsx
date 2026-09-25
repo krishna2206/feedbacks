@@ -455,10 +455,10 @@ function TicketView({ ticketId }: { ticketId: string }) {
             <span>
               {t("tickets.createdBy", { name: creator?.name ?? "—" })} · {ticket.createdAt ? timeAgo(ticket.createdAt, i18n.language) : ""}
             </span>
-            {ticket.createdVia === "mcp" && (
+            {(ticket.createdVia === "mcp" || ticket.createdVia === "api") && (
               <span className="tk-mcp">
                 <Icon name="bot" size={14} />
-                {t("tickets.viaMcp")}
+                {t(ticket.createdVia === "mcp" ? "tickets.viaMcp" : "tickets.viaApi")}
               </span>
             )}
             {ticket.aliases.length > 0 && <span>{t("tickets.formerKeys", { count: ticket.aliases.length })}</span>}
@@ -781,6 +781,7 @@ type CommentData = {
   body: string;
   createdAt: number | null;
   editedAt: number | null;
+  via?: string | null;
   author?: { id: string; name: string; image: string | null } | null;
   reactions: readonly { id: string; emoji: string; userId: string }[];
 };
@@ -803,6 +804,11 @@ function CommentCard({ c, users, meId }: { c: CommentData; users: (id: string) =
         <b>{c.author?.name ?? "—"}</b>
         <span className="tk-muted">{c.createdAt ? timeAgo(c.createdAt, i18n.language) : ""}</span>
         {c.editedAt && <span className="tk-muted">· {t("chat.edited")}</span>}
+        {c.via && (
+          <span className="tk-muted" title={t("chat.viaHint")}>
+            · {t("chat.via", { client: c.via })}
+          </span>
+        )}
       </header>
       <div className="tk-comment__body">
         <RichText text={c.body} users={users} meId={meId} />

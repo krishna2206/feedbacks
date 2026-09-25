@@ -180,8 +180,8 @@ export function TicketBoard<T extends TicketRow>({
                           </span>
                         </Tooltip>
                       )}
-                      {x.createdVia === "mcp" && (
-                        <Tooltip content={t("tickets.viaMcp")}>
+                      {(x.createdVia === "mcp" || x.createdVia === "api") && (
+                        <Tooltip content={t(x.createdVia === "mcp" ? "tickets.viaMcp" : "tickets.viaApi")}>
                           <span className="chip chip--square chip--icon">
                             <Icon name="bot" size={14} />
                           </span>

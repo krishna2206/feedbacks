@@ -60,5 +60,8 @@ export default drizzleZeroConfig(drizzleSchema, {
     // Internal file-deletion queue and full-text index: never synced
     storageDeletion: false,
     searchDoc: false,
+    // Token hashes and stored API responses: never synced
+    apiToken: false,
+    apiIdempotency: false,
   },
 });

@@ -74,8 +74,8 @@ export function highlight(text: string, terms: readonly string[], max?: number):
   return out;
 }
 
-const SEARCH_KINDS = ["message", "ticket", "comment", "doc"] as const;
-type SearchKind = (typeof SEARCH_KINDS)[number];
+export const SEARCH_KINDS = ["message", "ticket", "comment", "doc"] as const;
+export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 const params = z.object({
   organizationId: z.string().min(1).max(64),
@@ -163,25 +163,33 @@ const SQL = `
    order by ts_rank_cd(d.tsv, q.tsq, 32) desc, d.created_at desc
    limit $11`;
 
-async function search(c: Context) {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  if (!session) return c.json({ error: "unauthorized" }, 401);
-  const parsed = params.safeParse(Object.fromEntries(new URL(c.req.url).searchParams));
-  if (!parsed.success) return c.json({ error: "invalid_query", issues: parsed.error.issues }, 400);
-  const p = parsed.data;
-  const userId = session.user.id;
+export type SearchParams = {
+  q: string;
+  types: SearchKind[] | null;
+  channelId?: string;
+  projectId?: string;
+  authorId?: string;
+  from?: number;
+  to?: number;
+  limit: number;
+};
 
+/**
+ * Searches an organization as `userId` (shared by GET /api/search and the REST API v1).
+ * Returns null when the user is not a member of the organization.
+ */
+export async function searchFor(organizationId: string, userId: string, p: SearchParams) {
   const membership = await pool.query<{ role: string }>("select role from member where organization_id = $1 and user_id = $2", [
-    p.organizationId,
+    organizationId,
     userId,
   ]);
   const role = membership.rows[0]?.role;
-  if (!role) return c.json({ error: "forbidden" }, 403);
+  if (!role) return null;
 
   const tsquery = toPrefixQuery(p.q);
-  if (!tsquery) return c.json({ results: [] });
+  if (!tsquery) return [];
   const { rows } = await pool.query<Row>(SQL, [
-    p.organizationId,
+    organizationId,
     tsquery,
     userId,
     role === "owner" || role === "admin",
@@ -195,33 +203,42 @@ async function search(c: Context) {
   ]);
   const terms = queryWords(p.q).map(fold);
 
-  return c.json({
-    results: rows.map((r) => ({
-      id: r.id,
-      kind: r.kind,
-      entityId: r.entity_id,
-      createdAt: r.created_at.getTime(),
-      /** Body excerpt (messages, comments, ticket description) with highlighted matches */
-      snippet: r.body ? highlight(r.body, terms, 180) : "",
-      /** Highlighted ticket title (tickets and comments) or document title */
-      title: r.doc_title ? highlight(r.doc_title, terms) : r.ticket_title ? highlight(r.ticket_title, terms) : "",
-      author: r.author_id ? { id: r.author_id, name: r.author_name ?? "" } : null,
-      channel: r.channel_id ? { id: r.channel_id, name: r.channel_name ?? "", kind: r.channel_kind ?? "public" } : null,
-      parentId: r.parent_id,
-      ticket: r.ticket_id
-        ? {
-            id: r.ticket_id,
-            key: `${r.project_key ?? "?"}-${r.ticket_number}`,
-            title: r.ticket_title ?? "",
-            status: r.ticket_status ?? "todo",
-          }
-        : null,
-      doc: r.doc_id ? { id: r.doc_id, title: r.doc_title ?? "", folderId: r.doc_folder_id } : null,
-      project: r.project_id
-        ? { id: r.project_id, key: r.project_key ?? "", name: r.project_name ?? "", color: r.project_color ?? "#888888" }
-        : null,
-    })),
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    entityId: r.entity_id,
+    createdAt: r.created_at.getTime(),
+    /** Body excerpt (messages, comments, ticket description) with highlighted matches */
+    snippet: r.body ? highlight(r.body, terms, 180) : "",
+    /** Highlighted ticket title (tickets and comments) or document title */
+    title: r.doc_title ? highlight(r.doc_title, terms) : r.ticket_title ? highlight(r.ticket_title, terms) : "",
+    author: r.author_id ? { id: r.author_id, name: r.author_name ?? "" } : null,
+    channel: r.channel_id ? { id: r.channel_id, name: r.channel_name ?? "", kind: r.channel_kind ?? "public" } : null,
+    parentId: r.parent_id,
+    ticket: r.ticket_id
+      ? {
+          id: r.ticket_id,
+          key: `${r.project_key ?? "?"}-${r.ticket_number}`,
+          title: r.ticket_title ?? "",
+          status: r.ticket_status ?? "todo",
+        }
+      : null,
+    doc: r.doc_id ? { id: r.doc_id, title: r.doc_title ?? "", folderId: r.doc_folder_id } : null,
+    project: r.project_id
+      ? { id: r.project_id, key: r.project_key ?? "", name: r.project_name ?? "", color: r.project_color ?? "#888888" }
+      : null,
+  }));
+}
+
+async function search(c: Context) {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.json({ error: "unauthorized" }, 401);
+  const parsed = params.safeParse(Object.fromEntries(new URL(c.req.url).searchParams));
+  if (!parsed.success) return c.json({ error: "invalid_query", issues: parsed.error.issues }, 400);
+  const { organizationId, ...p } = parsed.data;
+  const results = await searchFor(organizationId, session.user.id, p);
+  if (!results) return c.json({ error: "forbidden" }, 403);
+  return c.json({ results });
 }
 
 /** Plain text of a highlighted string (tests, logs) */

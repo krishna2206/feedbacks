@@ -231,7 +231,9 @@
     "noTicketToLink": "Aucun ticket modifiable",
     "linkedToast_one": "Message lié à {{key}}",
     "linkedToast_other": "{{count}} messages liés à {{key}}",
-    "linkAnyway": "Lier quand même"
+    "linkAnyway": "Lier quand même",
+    "via": "via {{client}}",
+    "viaHint": "Publié par un agent ou un script avec le jeton d'accès de cette personne"
   },
   "emoji": {
     "frequent": "Fréquents",
@@ -409,7 +411,8 @@
     "commentFailed": "Le commentaire a été refusé",
     "commentPlaceholder": "Laisser un commentaire…",
     "commentHint": "Markdown · @ pour mentionner",
-    "sendComment": "Envoyer le commentaire"
+    "sendComment": "Envoyer le commentaire",
+    "viaApi": "Créé via l'API (CLI ou script)"
   },
   "projects": {
     "actionFailed": "La modification a été refusée",
@@ -501,7 +504,9 @@
     "tabs": {
       "notifications": "Notifications",
       "members": "Membres",
-      "teams": "Équipes"
+      "teams": "Équipes",
+      "tokens": "Jetons d'API",
+      "integrations": "Intégrations"
     },
     "notifications": {
       "title": "Notifications",
@@ -819,5 +824,62 @@
     "addPlaceholder": "Ajouter un membre…",
     "noMembers": "Aucun membre pour l'instant.",
     "removeMember": "Retirer de l'équipe"
+  },
+  "tokens": {
+    "title": "Jetons d'accès personnels",
+    "intro": "Les jetons permettent au CLI, au serveur MCP (Claude Code…) et à des scripts d'utiliser Feedbacks en votre nom. Ils ont exactement vos droits dans cette organisation, rien de plus.",
+    "name": "Nom",
+    "namePlaceholder": "ex. Claude Code sur mon portable",
+    "scope": "Portée",
+    "scopes": {
+      "read": "Lecture seule",
+      "read-write": "Lecture et écriture"
+    },
+    "expiry": "Expiration",
+    "expiresIn_one": "Expire dans {{count}} jour",
+    "expiresIn_other": "Expire dans {{count}} jours",
+    "noExpiry": "Sans expiration",
+    "create": "Créer le jeton",
+    "createFailed": "Le jeton n'a pas pu être créé",
+    "secretTitle": "Jeton « {{name}} » créé",
+    "secretOnce": "Copiez-le maintenant : il ne sera plus affiché. Gardez-le comme un mot de passe.",
+    "copy": "Copier",
+    "copied": "Copié dans le presse-papiers",
+    "myTokens": "Vos jetons",
+    "allTokens": "Tous les jetons de l'organisation",
+    "showAll": "Tous les membres",
+    "none": "Aucun jeton pour l'instant.",
+    "createdAgo": "créé {{when}}",
+    "usedAgo": "utilisé {{when}}",
+    "neverUsed": "jamais utilisé",
+    "expiresAt": "expire le {{date}}",
+    "statusRevoked": "Révoqué",
+    "statusExpired": "Expiré",
+    "revoke": "Révoquer",
+    "revokeConfirm": "Révoquer « {{name}} » ? Tout ce qui l'utilise cessera immédiatement de fonctionner.",
+    "revoked": "« {{name}} » révoqué",
+    "revokeFailed": "Le jeton n'a pas pu être révoqué",
+    "agentsNote": "Un agent n'a jamais plus de droits que la personne dont il utilise le jeton : canaux privés, projets privés et documents restreints restent hors de portée."
+  },
+  "integrations": {
+    "title": "Agents et intégrations",
+    "intro": "Laissez des agents IA lire vos discussions, transformer les retours en tickets et utiliser la base de connaissances — avec votre jeton d'accès, donc avec vos seuls droits.",
+    "createToken": "Créer un jeton d'accès",
+    "cliTitle": "Interface en ligne de commande",
+    "cliIntro": "L'interface recommandée pour les agents : chaque commande a une sortie --json stable et des codes de sortie explicites.",
+    "cliInstall": "Installer",
+    "cliLogin": "Se connecter",
+    "cliTry": "Essayer",
+    "mcpTitle": "Serveur MCP",
+    "mcpIntro": "Pour les clients MCP (Claude Code, Claude Desktop, Cursor…) : lire les canaux, lister les retours non traités, créer des tickets depuis des messages, chercher et modifier des documents.",
+    "mcpUrl": "URL du serveur (Streamable HTTP)",
+    "mcpHttp": "Claude Code — distant",
+    "mcpStdio": "Claude Code — local (stdio)",
+    "skillTitle": "Skill Claude Code",
+    "skillIntro": "Le skill feedbacks-triage transforme les messages non traités d'un canal en plan de tickets, attend votre validation, puis crée les tickets et répond dans les fils.",
+    "skillLink": "Installer le skill (GitHub)",
+    "apiTitle": "API REST",
+    "apiIntro": "Tout ce que font le CLI et le serveur MCP passe par l'API REST v1, documentée en OpenAPI.",
+    "apiReference": "Référence de l'API"
   }
 }

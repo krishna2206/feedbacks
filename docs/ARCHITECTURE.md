@@ -17,7 +17,7 @@
 - **Postgres is the source of truth.** Everything else can be rebuilt from it. zero-cache keeps a SQLite replica, fed by logical replication (`wal_level=logical`).
 - **Reads (queries)**: the client runs a named query (e.g. `messages.byChannel`) against its local store first, so the UI updates instantly. zero-cache then asks the API (`/api/zero/query`) to turn the name and arguments into ZQL for **this user**. Permission filters are applied at that point. zero-cache runs the result against its replica and keeps the client up to date.
 - **Writes (mutators)**: a mutator (e.g. `messages.send`) runs optimistically on the client, then again **on the server** in a Postgres transaction (`/api/zero/mutate`). The server run is authoritative: it checks permissions and uses the server clock. If it fails, the client change is rolled back.
-- **Auth**: Better Auth sessions (cookies). zero-cache forwards the browser's cookies to the API, so query and mutate endpoints know the user. Non-browser clients (tests, MCP, CLI) authenticate with the session token as `Authorization: Bearer` (the Better Auth `bearer` plugin).
+- **Auth**: Better Auth sessions (cookies). zero-cache forwards the browser's cookies to the API, so query and mutate endpoints know the user. Agents, scripts, the CLI and the MCP server use **personal access tokens** (`Authorization: Bearer fbk_…`) on the REST API v1 — see "Agents" below. (Tests may also send a session token as bearer, via the Better Auth `bearer` plugin.)
 - **One origin**: `/`, `/api` and `/sync` share a domain, so there is no CORS and no cross-site cookie. zero-cache accepts an optional first path segment (`/sync/sync/v51/connect`), which is why a plain path route works. The client uses `cacheURL = ${origin}/sync`.
 
 ## Packages
@@ -26,7 +26,11 @@
 |---|---|
 | `packages/schema` | Drizzle schema (`src/db`), migrations, generated Zero schema (`src/zero/schema.ts`, via drizzle-zero), **shared queries and mutators with their permission rules**, enums, ids |
 | `packages/ui` | Design tokens, base styles, components (Button, Menu, Modal, Tooltip, toasts, Avatar, icons, status and priority icons) |
-| `apps/api` | Hono server: Better Auth (`/api/auth/*`), Zero endpoints, public instance and invitation endpoints, email, CLI scripts |
+| `apps/api` | Hono server: Better Auth (`/api/auth/*`), Zero endpoints, REST API v1 (`src/v1`), MCP over HTTP (`/api/mcp`), token management, public instance and invitation endpoints, email, CLI scripts |
+| `packages/client` | Typed, dependency-free client of the REST API v1 (used by the CLI and the MCP server) |
+| `packages/cli` | `feedbacks` CLI: single-file bundle, human output or stable `--json`, meaningful exit codes |
+| `packages/mcp` | MCP server (`createFeedbacksMcpServer`), stdio binary `feedbacks-mcp` |
+| `integrations/claude-code` | Claude Code skill `feedbacks-triage` |
 | `apps/web` | SPA: routes (TanStack Router, one chunk per page), auth screens, app shell, channel view |
 | `scripts/` | Dev orchestration: embedded Postgres, `pnpm dev`, migrations, integration test |
 
@@ -121,6 +125,29 @@ Notifications are written by the server mutators only, never for the actor. **Pr
 - **View as.** Owners and admins can preview what a member sees: the tree queries take a `viewAs` argument, honored only when the caller is an owner/admin, and the UI is read-only in that mode. It can only narrow what an admin already sees, and mutations always use the caller.
 - **Import.** `POST /api/docs/import` recreates folders and documents from a `.zip` of Markdown files (or one `.md`), in one transaction, with a dry-run report (created, reused folders, skipped files, relative images). It is the first step towards importing Google Drive (Docs exported as Markdown); a Drive connector is a separate piece of work.
 
+
+## Agents: tokens, REST API v1, CLI, MCP
+
+```
+ Claude Code / scripts                                      api (Hono)
+ ├ feedbacks CLI (--json) ──┐                              ┌─────────────────────────────────────────┐
+ ├ feedbacks-mcp (stdio) ───┼── HTTPS  /api/v1  ──────────▶│ token auth → rate limit → scope →       │
+ └ MCP client (HTTP) ───────┼── HTTPS  /api/mcp ──┐        │ idempotency → Zod validation →          │
+                            │                     └─(in-process app.request)─▶ same v1 routes        │
+                            │                              │   reads:  ZQL + shared permission filters│
+                            │                              │   writes: the Zero mutators (server run) │──▶ Postgres ──▶ zero-cache ──▶ browsers
+                            │                              └─────────────────────────────────────────┘
+```
+
+- **No second business layer.** REST writes call the **same Zero mutators** as the web app, run on the server (`dbProvider.transaction(tx => mutator.fn({ tx, ctx, args }))`): same validation, permission checks, activities, notifications, `ALREADY_LINKED` and `DOC_CONFLICT` rules. REST reads run ZQL built with the **same permission filters** (`packages/schema/src/zero/permissions.ts`) directly against Postgres. Changes reach browsers through replication like any other write.
+- **Personal access tokens** (`api_token`, never synced): `fbk_` + 256 random bits, stored as SHA-256 with a display prefix. One token = one member of one organization + a scope (`read` = GET only, `read-write`). A token stops working when revoked, expired, or when its owner leaves the organization. Owners/admins can list and revoke the organization's tokens.
+- **Who is acting.** The token's user is the author of everything written through it. The mutator context carries `via` (`api` | `mcp`) and a client label (`X-Feedbacks-Client`, the MCP client's name over stdio, or the User-Agent product over HTTP): tickets record `created_via`, and messages/comments store `via` ("via Claude Code" in the UI).
+- **Idempotency.** Every POST/PATCH/DELETE accepts `Idempotency-Key`; the first response is stored (`api_idempotency`, 24 h) and replayed for retries with the same key and body (`Idempotent-Replayed: true`); a key reused with another body → 422. The client and CLI send a fresh key on every write and reuse it on automatic retries.
+- **Rate limits.** Token buckets per token and per API process (`API_RATE_LIMIT_PER_MIN`, `API_WRITE_RATE_LIMIT_PER_MIN`), `429` + `Retry-After`. With several API replicas, the effective limit is multiplied by the number of replicas.
+- **OpenAPI.** Routes are declared once in a small registry with Zod schemas (`apps/api/src/v1/registry.ts`); the same schemas validate requests and generate `GET /api/v1/openapi.json` (OpenAPI 3.1 / JSON Schema 2020-12) and the HTML reference `GET /api/v1/reference`. Public shapes are snake_case, errors are `{ error: { code, message, details } }`.
+- **MCP.** `packages/mcp` registers 17 agent-oriented tools (annotated read-only / destructive) that call the REST API through `@feedbacks/client`. Over stdio it talks to the instance over HTTPS; over HTTP (`/api/mcp`, stateless Streamable HTTP, JSON responses) the same server calls the REST routes **in-process** with the caller's token, so both transports share auth, scopes, limits and permissions.
+- **CLI.** `packages/cli` bundles to one dependency-free file. Credentials: `feedbacks login` (`~/.config/feedbacks/config.json`, mode 600) or `FEEDBACKS_URL` / `FEEDBACKS_TOKEN`. Exit codes: 0 ok, 1 error, 2 usage, 3 auth/permission, 4 not found, 5 conflict, 6 rate limited, 7 network.
+
 ## Permissions
 
 - **Queries** filter rows server-side (`packages/schema/src/zero/permissions.ts`). For example, a channel is visible if it's public and the user belongs to its organization, or if the user is a member of the channel. Clients only ever receive rows they may see.
@@ -130,7 +157,7 @@ Notifications are written by the server mutators only, never for the actor. **Pr
 - **Documents**: see "Knowledge base mechanics" — resolved access (`acl_entry`) filters every query; mutators check `read` / `edit` / `manage` with the same data on the server.
 - **Projects**: owners and admins create, archive and see every project. A project with visibility `org` is readable by every organization member (implicit *viewer*); with `members`, only by its members. Project roles decide what people can do: **lead** manages the project and its members, **contributor** creates and edits tickets, **reporter** reads and comments, **viewer** reads.
 - **Tickets** are readable when their project is, and also by the **authors of their source messages**, even in a project they can't otherwise see: whoever reported a problem can follow what became of it. Creating and editing tickets requires lead/contributor (or admin); commenting requires reporter or above, or being a source author. Labels are created by contributors and above, renamed or deleted by admins.
-- **Agents** (MCP, CLI) act through a user's session, so they never have more rights than that user.
+- **Agents** (REST API, CLI, MCP) act as the owner of their personal access token, through the same queries and mutators: they never have more rights than that user in that organization, and `read` tokens can't write at all.
 
 ## Decisions
 
@@ -152,3 +179,8 @@ Notifications are written by the server mutators only, never for the actor. **Pr
 | Materialized document access (`acl_entry`) | Zero filters can't recurse; one resolved table serves sync, search, files and the API with the same answer |
 | Document bodies not synced with the tree | A large knowledge base stays light on every client; a body syncs when its document is opened |
 | Explicit save conflicts instead of CRDT | Simple and predictable for Markdown documents edited occasionally; nothing is merged behind anyone's back |
+| REST API built on the Zero mutators and permission filters | One set of business rules for the web app, the API, the CLI and MCP: no drift between interfaces |
+| Personal access tokens scoped to one organization | An agent's reach is exactly its user's in one organization; revocable and auditable (last use, `via` labels) |
+| CLI first, MCP as a complement | CLIs compose with any agent and shell script, with stable JSON and exit codes; MCP serves clients that prefer tools |
+| Stateless MCP over HTTP, calling the REST routes in-process | Scales like the rest of the API (no session affinity) and reuses its auth, limits and idempotency |
+| No AI in the product | The instance stays simple and private; intelligence comes from the agent the user chooses, with the user's rights |

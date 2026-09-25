@@ -162,6 +162,8 @@ export const message = pgTable(
     /** Number of tickets built from this message (maintained by a trigger on ticket_source); 0 = unprocessed */
     ticketCount: integer("ticket_count").notNull().default(0),
     lastReplyAt: timestampTz("last_reply_at"),
+    /** Set when posted by an agent through the API/MCP: client label shown as "via …" (null = web app) */
+    via: text("via"),
     createdAt: createdAt(),
     editedAt: timestampTz("edited_at"),
     deletedAt: timestampTz("deleted_at"),
@@ -326,6 +328,8 @@ export const comment = pgTable(
       .references(() => ticket.id, { onDelete: "cascade" }),
     authorId: userRef("author_id"),
     body: text("body").notNull(),
+    /** Set when posted by an agent through the API/MCP: client label shown as "via …" (null = web app) */
+    via: text("via"),
     createdAt: createdAt(),
     editedAt: timestampTz("edited_at"),
   },
@@ -595,4 +599,56 @@ export const storageDeletion = pgTable(
     nextAttemptAt: timestampTz("next_attempt_at").defaultNow().notNull(),
   },
   (t) => [index("storage_deletion_due_idx").on(t.nextAttemptAt, t.id)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Agents: personal access tokens and idempotent API writes (never synced) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Personal access token of a member for one organization (REST API v1, CLI, MCP).
+ * Only the SHA-256 of the secret is stored; the secret (`fbk_…`) is shown once at creation.
+ * An agent using a token has exactly the permissions of its owner in that organization.
+ */
+export const apiToken = pgTable(
+  "api_token",
+  {
+    id: text("id").primaryKey(),
+    organizationId: orgId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** hex SHA-256 of the full token */
+    tokenHash: text("token_hash").notNull(),
+    /** First characters of the token, shown in lists to recognize it (e.g. "fbk_3f9a") */
+    prefix: text("prefix").notNull(),
+    scope: text("scope").$type<"read" | "read-write">().notNull(),
+    createdAt: createdAt(),
+    expiresAt: timestampTz("expires_at"),
+    lastUsedAt: timestampTz("last_used_at"),
+    revokedAt: timestampTz("revoked_at"),
+    revokedBy: userRef("revoked_by"),
+  },
+  (t) => [uniqueIndex("api_token_hash_uq").on(t.tokenHash), index("api_token_org_user_idx").on(t.organizationId, t.userId, t.createdAt)],
+);
+
+/**
+ * Stored responses of API writes sent with an `Idempotency-Key` header (replayed for 24 h).
+ * `status` null = request in progress.
+ */
+export const apiIdempotency = pgTable(
+  "api_idempotency",
+  {
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiToken.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    /** hex SHA-256 of method + path + body: the same key with another request is refused */
+    requestHash: text("request_hash").notNull(),
+    status: integer("status"),
+    response: json("response"),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tokenId, t.key] }), index("api_idempotency_created_idx").on(t.createdAt)],
 );

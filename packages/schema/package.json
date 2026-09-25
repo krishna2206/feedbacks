@@ -15,7 +15,8 @@
     "./chat": "./src/chat.ts",
     "./tickets": "./src/tickets.ts",
     "./enums": "./src/enums.ts",
-    "./docs": "./src/docs.ts"
+    "./docs": "./src/docs.ts",
+    "./zero/permissions": "./src/zero/permissions.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate && pnpm zero:generate",

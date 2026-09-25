@@ -1,8 +1,8 @@
-import "./context";
 import { defineMutator, defineMutators, type Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { DM_MAX_MEMBERS, dmChannelId, excerpt, mentionedUserIds, normalizeChannelName } from "../chat";
 import { channelKind } from "../enums";
+import { viaLabel } from "./context";
 import { accessMutators, docLinkMutators, docMutators, folderMutators, teamMutators, trashMutators } from "./mutators-docs";
 import { notificationMutators, wantsNotification } from "./mutators-notifications";
 import { commentMutators, labelMutators, projectMutators, ticketMutators } from "./mutators-tickets";
@@ -349,6 +349,7 @@ export const mutators = defineMutators({
           replyCount: 0,
           ticketCount: 0,
           lastReplyAt: null,
+          via: viaLabel(ctx, tx.location),
           // The server clock is authoritative for ordering
           createdAt: at,
           editedAt: null,

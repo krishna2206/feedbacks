@@ -9,10 +9,10 @@ Most teams collect feedback in group chats: screenshots from support, bug report
 - **Tickets**: projects with roles (lead, contributor, reporter, viewer) and visibility, list and board views, statuses, priorities, labels, assignees, comments and activity, keyboard-first navigation. Moving a ticket to another project keeps its former key working.
 - **Notifications, ⌘K and search**: a bell for what concerns you (mentions, assignments, status changes, comments on tickets you follow, "your message became a ticket"), never for direct messages: conversations stay in the chat. A command menu to do and find anything from the keyboard, and full-text search across messages, tickets and comments that ignores case and accents and never shows what you can't read.
 - **Knowledge base**: Markdown documents in folders, with Drive-like sharing (organization, teams or people × read / edit / manage, inherited through folders, restrictable), version history with diffs and restore, conflict detection, trash, a table of contents, links to tickets, `[[document]]` mentions in chat, search, and import from a `.zip` of Markdown files. Owners and admins can preview what a member sees ("view as").
-- **AI-native**: a REST API and an **MCP server**, so agents like Claude Code can read conversations, turn feedback into tickets and pick up work, with exactly the permissions of the person using them.
+- **AI-native, without AI inside**: personal access tokens, a documented **REST API** (OpenAPI 3.1), a **CLI** with stable `--json` output and an **MCP server** (stdio and HTTP), so agents like Claude Code can read conversations, triage unprocessed feedback into tickets, answer in threads and use the knowledge base — with exactly the permissions of the person whose token they use. A ready-made Claude Code skill (`feedbacks-triage`) does the whole triage loop, with your approval. See [docs/AGENTS.md](docs/AGENTS.md).
 - **Fast**: every interaction is instant. Data is synced locally with [Zero](https://zero.rocicorp.dev), so the UI never waits for the network.
 
-> **Status: early development.** Milestones M0 (foundations), M1 (chat), M2 (tickets) and M3 (notifications, command menu, search) are done. See the [roadmap](#roadmap).
+> **Status: early development.** Milestones M0 (foundations) to M5 (agents: REST API, CLI, MCP) are done. See the [roadmap](#roadmap).
 
 ## Stack
 
@@ -20,7 +20,8 @@ Most teams collect feedback in group chats: screenshots from support, bug report
 |---|---|
 | Web | React 19, Vite, TypeScript, TanStack Router, plain CSS with design tokens, i18next (English, French) |
 | Sync | [Zero](https://zero.rocicorp.dev) (local-first, query-driven sync over Postgres logical replication) |
-| API | [Hono](https://hono.dev) on Node: auth, Zero query/mutate endpoints, REST API (coming) |
+| API | [Hono](https://hono.dev) on Node: auth, Zero query/mutate endpoints, REST API v1 (OpenAPI 3.1), MCP over Streamable HTTP |
+| Agents | `@feedbacks/cli` (zero-dependency CLI), `@feedbacks/mcp` ([MCP](https://modelcontextprotocol.io) server), `@feedbacks/client` (typed API client), Claude Code skill |
 | Auth | [Better Auth](https://www.better-auth.com): email and password, optional Google, organizations and invitations |
 | Data | PostgreSQL (source of truth), Drizzle ORM and migrations |
 
@@ -81,7 +82,7 @@ Four containers: `postgres` (with `wal_level=logical`), `api`, `zero-cache` and 
 | ✅ M2 | Tickets: projects and roles, list and board, **messages → ticket**, source messages, comments, activity |
 | ✅ M3 | Notifications (bell, preferences, browser notifications), ⌘K command menu, full-text search, keyboard shortcuts |
 | ✅ M4 | Knowledge base: teams, folders and Markdown documents, inherited permissions, versions and conflicts, trash, links to tickets, import |
-| M5 | REST API v1, **MCP server**, CLI |
+| ✅ M5 | Agents: personal access tokens, REST API v1 (OpenAPI), **CLI**, **MCP server** (stdio + HTTP), Claude Code triage skill |
 | M6 | Production deployment guide, mobile app (Expo) |
 
 ## License

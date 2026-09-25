@@ -44,6 +44,11 @@ export const env = {
   uploadSweepIntervalMin: Number(process.env.UPLOAD_SWEEP_INTERVAL_MIN ?? 1440),
   /** Trashed folders and documents are deleted for good after this many days (by the same sweeper) */
   docsTrashDays: Number(process.env.DOCS_TRASH_DAYS ?? 30),
+  /** REST API v1 rate limits, per access token and per API process */
+  api: {
+    rateLimitPerMin: Math.max(1, Number(process.env.API_RATE_LIMIT_PER_MIN ?? 300)),
+    writeRateLimitPerMin: Math.max(1, Number(process.env.API_WRITE_RATE_LIMIT_PER_MIN ?? 60)),
+  },
 };
 
 export const isDev = env.nodeEnv !== "production";

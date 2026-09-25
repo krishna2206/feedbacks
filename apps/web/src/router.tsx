@@ -176,6 +176,16 @@ const teamsRoute = createRoute({
   path: "/settings/teams",
   component: lazyRouteComponent(() => import("./app/settings/TeamsPage"), "TeamsPage"),
 });
+const tokensRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/settings/tokens",
+  component: lazyRouteComponent(() => import("./app/settings/TokensPage"), "TokensPage"),
+});
+const integrationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/settings/integrations",
+  component: lazyRouteComponent(() => import("./app/settings/IntegrationsPage"), "IntegrationsPage"),
+});
 const membersRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/settings/members",
@@ -206,6 +216,8 @@ const routeTree = rootRoute.addChildren([
     notificationSettingsRoute,
     membersRoute,
     teamsRoute,
+    tokensRoute,
+    integrationsRoute,
   ]),
 ]);
 

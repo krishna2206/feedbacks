@@ -10,7 +10,7 @@
  * - Activities and notifications use ids derived from the caller's `eventId`, so optimistic (client)
  *   and authoritative (server) runs write the same rows.
  */
-import "./context";
+
 import { ApplicationError, defineMutator, type Transaction } from "@rocicorp/zero";
 import { z } from "zod";
 import { excerpt, mentionedUserIds } from "../chat";
@@ -34,6 +34,7 @@ import {
   normalizeProjectKey,
   ticketKey,
 } from "../tickets";
+import { viaLabel } from "./context";
 import { wantsNotification } from "./mutators-notifications";
 import {
   assertCanReadChannel,
@@ -732,6 +733,7 @@ export const commentMutators = {
         ticketId: args.ticketId,
         authorId: ctx.userID,
         body: args.body,
+        via: viaLabel(ctx, tx.location),
         createdAt: when,
         editedAt: null,
       });

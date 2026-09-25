@@ -231,7 +231,9 @@
     "noTicketToLink": "No ticket you can edit",
     "linkedToast_one": "Message linked to {{key}}",
     "linkedToast_other": "{{count}} messages linked to {{key}}",
-    "linkAnyway": "Link anyway"
+    "linkAnyway": "Link anyway",
+    "via": "via {{client}}",
+    "viaHint": "Posted by an agent or a script with this person's access token"
   },
   "emoji": {
     "frequent": "Frequently used",
@@ -409,7 +411,8 @@
     "commentFailed": "The comment was refused",
     "commentPlaceholder": "Leave a comment…",
     "commentHint": "Markdown · @ to mention",
-    "sendComment": "Send comment"
+    "sendComment": "Send comment",
+    "viaApi": "Created through the API (CLI or script)"
   },
   "projects": {
     "actionFailed": "The change was refused",
@@ -501,7 +504,9 @@
     "tabs": {
       "notifications": "Notifications",
       "members": "Members",
-      "teams": "Teams"
+      "teams": "Teams",
+      "tokens": "API tokens",
+      "integrations": "Integrations"
     },
     "notifications": {
       "title": "Notifications",
@@ -819,5 +824,62 @@
     "addPlaceholder": "Add a member…",
     "noMembers": "No member yet.",
     "removeMember": "Remove from the team"
+  },
+  "tokens": {
+    "title": "Personal access tokens",
+    "intro": "Tokens let the CLI, the MCP server (Claude Code…) and scripts use Feedbacks as you. They carry exactly your access in this organization, nothing more.",
+    "name": "Name",
+    "namePlaceholder": "e.g. Claude Code on my laptop",
+    "scope": "Scope",
+    "scopes": {
+      "read": "Read only",
+      "read-write": "Read & write"
+    },
+    "expiry": "Expiration",
+    "expiresIn_one": "Expires in {{count}} day",
+    "expiresIn_other": "Expires in {{count}} days",
+    "noExpiry": "No expiration",
+    "create": "Create token",
+    "createFailed": "The token couldn't be created",
+    "secretTitle": "Token “{{name}}” created",
+    "secretOnce": "Copy it now: it won't be shown again. Store it like a password.",
+    "copy": "Copy",
+    "copied": "Copied to the clipboard",
+    "myTokens": "Your tokens",
+    "allTokens": "All tokens of the organization",
+    "showAll": "All members",
+    "none": "No tokens yet.",
+    "createdAgo": "created {{when}}",
+    "usedAgo": "last used {{when}}",
+    "neverUsed": "never used",
+    "expiresAt": "expires {{date}}",
+    "statusRevoked": "Revoked",
+    "statusExpired": "Expired",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke “{{name}}”? Anything using it stops working immediately.",
+    "revoked": "“{{name}}” revoked",
+    "revokeFailed": "The token couldn't be revoked",
+    "agentsNote": "Agents never get more than the person whose token they use: private channels, private projects and restricted documents stay out of reach."
+  },
+  "integrations": {
+    "title": "Agents and integrations",
+    "intro": "Let AI agents read your discussions, triage feedback into tickets and use the knowledge base — with your access token, so with your permissions only.",
+    "createToken": "Create an access token",
+    "cliTitle": "Command-line interface",
+    "cliIntro": "The recommended interface for agents: every command has a stable --json output and meaningful exit codes.",
+    "cliInstall": "Install",
+    "cliLogin": "Log in",
+    "cliTry": "Try it",
+    "mcpTitle": "MCP server",
+    "mcpIntro": "For MCP clients (Claude Code, Claude Desktop, Cursor…): read channels, list unprocessed feedback, create tickets from messages, search and edit documents.",
+    "mcpUrl": "Server URL (Streamable HTTP)",
+    "mcpHttp": "Claude Code — remote",
+    "mcpStdio": "Claude Code — local (stdio)",
+    "skillTitle": "Claude Code skill",
+    "skillIntro": "The feedbacks-triage skill turns the unprocessed messages of a channel into a ticket plan, waits for your approval, then creates the tickets and answers in the threads.",
+    "skillLink": "Install the skill (GitHub)",
+    "apiTitle": "REST API",
+    "apiIntro": "Everything the CLI and the MCP server do goes through the REST API v1, documented with OpenAPI.",
+    "apiReference": "API reference"
   }
 }

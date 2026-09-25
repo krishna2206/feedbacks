@@ -1,0 +1,38 @@
+{
+  "name": "@feedbacks/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "description": "Command-line interface of Feedbacks (chat + tickets + knowledge base) for humans and AI agents",
+  "keywords": [
+    "feedbacks",
+    "cli",
+    "tickets",
+    "agents",
+    "claude-code"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/krishna2206/feedbacks",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "feedbacks": "dist/feedbacks.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@feedbacks/client": "workspace:*",
+    "@types/node": "^22.20.4",
+    "esbuild": "^0.28.2"
+  }
+}

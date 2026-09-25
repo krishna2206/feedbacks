@@ -27,6 +27,8 @@ export type MessageData = {
   createdAt: number | null;
   editedAt: number | null;
   deletedAt: number | null;
+  /** Agent/client label when posted through the API or MCP */
+  via?: string | null;
   author?: { id: string; name: string; image: string | null } | null;
   attachments: readonly {
     id: string;
@@ -151,6 +153,11 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
             <div className="msg__body">
               <Markdown text={m.body} users={lookup} meId={user.id} />
               {m.editedAt && <span className="msg__edited">{t("chat.edited")}</span>}
+              {m.via && (
+                <span className="msg__edited" title={t("chat.viaHint")}>
+                  {t("chat.via", { client: m.via })}
+                </span>
+              )}
             </div>
           )
         )}

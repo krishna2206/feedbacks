@@ -424,8 +424,8 @@ const Row = memo(function Row({
               </span>
             </Tooltip>
           )}
-          {x.createdVia === "mcp" && (
-            <Tooltip content={t("tickets.viaMcp")}>
+          {(x.createdVia === "mcp" || x.createdVia === "api") && (
+            <Tooltip content={t(x.createdVia === "mcp" ? "tickets.viaMcp" : "tickets.viaApi")}>
               <span className="iss-src">
                 <Icon name="bot" size={14} />
               </span>

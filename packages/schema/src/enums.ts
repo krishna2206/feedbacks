@@ -25,7 +25,8 @@ export type TicketStatus = z.infer<typeof ticketStatus>;
 export const ticketPriority = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
 export type TicketPriority = z.infer<typeof ticketPriority>;
 
-export const createdVia = z.enum(["app", "mcp"]);
+/** Where a ticket was created: the web app, the REST API (CLI, scripts) or the MCP server (agents) */
+export const createdVia = z.enum(["app", "api", "mcp"]);
 export type CreatedVia = z.infer<typeof createdVia>;
 
 export const activityKind = z.enum([
