@@ -1,0 +1,2 @@
+/* Search matches (command menu, search page) */
+mark.hl { background: color-mix(in srgb, var(--yellow-base) 28%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }

@@ -16,6 +16,7 @@ import {
   label,
   message,
   notification,
+  notificationSetting,
   project,
   projectMember,
   reaction,
@@ -172,11 +173,16 @@ export const activityRelations = relations(activity, ({ one }) => ({
 }));
 
 export const notificationRelations = relations(notification, ({ one }) => ({
+  organization: one(organization, { fields: [notification.organizationId], references: [organization.id] }),
   user: one(user, { fields: [notification.userId], references: [user.id], relationName: "recipient" }),
   actor: one(user, { fields: [notification.actorId], references: [user.id], relationName: "actor" }),
   ticket: one(ticket, { fields: [notification.ticketId], references: [ticket.id] }),
   message: one(message, { fields: [notification.messageId], references: [message.id] }),
   channel: one(channel, { fields: [notification.channelId], references: [channel.id] }),
+}));
+
+export const notificationSettingRelations = relations(notificationSetting, ({ one }) => ({
+  user: one(user, { fields: [notificationSetting.userId], references: [user.id] }),
 }));
 
 /* -------------------------- Knowledge base -------------------------- */

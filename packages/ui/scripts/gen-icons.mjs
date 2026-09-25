@@ -83,6 +83,12 @@ const MAP = {
   doorArrow: "door-arrow-left",
   language: "local-language",
   person: "person-circle",
+  mailRead: "mail-read",
+  mailUnread: "mail-unread",
+  arrowLeft: "arrow-left",
+  bellOff: "alert-off",
+  comment: "comment",
+  clock: "clock",
 };
 /** Small glyphs used inside other controls */
 const EXTRA = {

@@ -34,6 +34,7 @@ import {
   normalizeProjectKey,
   ticketKey,
 } from "../tickets";
+import { wantsNotification } from "./mutators-notifications";
 import {
   assertCanReadChannel,
   assertOrgMember,
@@ -105,6 +106,7 @@ async function notify(
     if (!userId || done.has(userId)) continue;
     done.add(userId);
     if (!(await orgMembership(tx, userId, n.organizationId))) continue;
+    if (!(await wantsNotification(tx, userId, n.organizationId, n.kind))) continue;
     await tx.mutate.notification.upsert({
       id: `${n.eventId}:${n.kind}:${userId}`,
       organizationId: n.organizationId,
@@ -742,10 +744,22 @@ export const commentMutators = {
         if ((await projectRole(tx, userId, ticket.project)) || (await isSourceAuthor(tx, userId, ticket.id))) mentioned.push(userId);
       }
       await notify(tx, { ...base, kind: "mention", recipients: mentioned, body: `${key} · ${excerpt(args.body)}` });
+      // Followers of the ticket: creator, assignee, authors of its source messages and previous commenters
+      const commenters = await sqlAll<{ author_id: string }>(
+        tx,
+        "select distinct author_id from comment where ticket_id = $1 and id <> $2 and author_id is not null",
+        [ticket.id, args.id],
+      );
+      const followers = [ticket.creatorId, ticket.assigneeId, ...(await sourceAuthors(tx, ticket.id))];
+      for (const { author_id } of commenters) {
+        // Former commenters may have lost access since (project made private, role removed)
+        if ((await projectRole(tx, author_id, ticket.project)) || (await isSourceAuthor(tx, author_id, ticket.id)))
+          followers.push(author_id);
+      }
       await notify(tx, {
         ...base,
         kind: "comment",
-        recipients: [ticket.creatorId, ticket.assigneeId].filter((u) => u && !mentioned.includes(u)),
+        recipients: followers.filter((u) => u && !mentioned.includes(u)),
         body: `${key} · ${excerpt(args.body)}`,
       });
     },

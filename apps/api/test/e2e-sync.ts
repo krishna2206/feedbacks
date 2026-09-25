@@ -773,6 +773,160 @@ await rejected(
 );
 step("move: new number in the target project, former key kept as alias, numbers never reused");
 
+/* ------------------------------------------------------------------ */
+/* M3 — notifications (rules, preferences, read state) and search      */
+/* ------------------------------------------------------------------ */
+
+const notificationsOf = async (userId: string, where = "true") =>
+  (
+    await db.query(
+      `select id, kind, actor_id, ticket_id, message_id, read_at, archived_at from notification where user_id = $1 and organization_id = $2 and ${where} order by created_at`,
+      [userId, orgId],
+    )
+  ).rows;
+const say = async (z: Zero, channelId: string, body: string, parentId?: string) => {
+  const mid = newId();
+  await ok(
+    z.mutate(
+      mutators.messages.send({ id: mid, organizationId: orgId, channelId, body, parentId: parentId ?? null, createdAt: Date.now() }),
+    ),
+    `message "${body}"`,
+  );
+  return mid;
+};
+
+// 25. No notification for direct messages: a conversation lives in the chat
+const dmMention = await say(zo, dmId, `${mentionToken(bob.userId)} are you around?`);
+assert.equal((await notificationsOf(bob.userId, `message_id = '${dmMention}'`)).length, 0, "no notification for a DM mention");
+step("notifications: direct messages never notify (not even mentions)");
+
+// 26. Preferences: a muted kind is never created; settings are private
+await ok(
+  zb.mutate(
+    mutators.notifications.updateSettings({ organizationId: orgId, mutedKinds: ["mention"], browserEnabled: true, at: Date.now() }),
+  ),
+  "bob mutes mentions",
+);
+const muted = await say(zo, general.id, `${mentionToken(bob.userId)} muted ping`);
+assert.equal((await notificationsOf(bob.userId, `message_id = '${muted}'`)).length, 0, "muted kind not created");
+await ok(
+  zb.mutate(mutators.notifications.updateSettings({ organizationId: orgId, mutedKinds: [], browserEnabled: true, at: Date.now() })),
+  "bob unmutes",
+);
+const unmuted = await say(zo, general.id, `${mentionToken(bob.userId)} audible ping`);
+assert.equal((await notificationsOf(bob.userId, `message_id = '${unmuted}'`)).length, 1, "unmuted kind created again");
+const bobSettings = await zb.run(queries.notifications.settings({ organizationId: orgId }), { type: "complete" });
+assert.equal(bobSettings?.browserEnabled, true, "bob reads his settings");
+assert.equal(await zc.run(queries.notifications.settings({ organizationId: orgId }), { type: "complete" }), undefined, "carol has none");
+step("notifications: preferences mute a kind at creation; settings stay private");
+
+// 27. Ticket events: assignment, status, comments for every follower
+const playground = newTicket(appId, "Notification playground");
+await ok(zb.mutate(playground), "bob creates a ticket");
+const pgId = playground.args.id;
+await ok(
+  zc.mutate(
+    mutators.comments.create({ id: newId(), organizationId: orgId, ticketId: pgId, body: "I saw this too", createdAt: Date.now() }),
+  ),
+  "carol comments first",
+);
+await ok(zo.mutate(mutators.tickets.update({ ...ev(), organizationId: orgId, ticketId: pgId, assigneeId: bob.userId })), "assign bob");
+await ok(zo.mutate(mutators.tickets.update({ ...ev(), organizationId: orgId, ticketId: pgId, status: "in_progress" })), "status");
+await ok(
+  zo.mutate(
+    mutators.comments.create({
+      id: newId(),
+      organizationId: orgId,
+      ticketId: pgId,
+      body: "Please double-check the zebra layout",
+      createdAt: Date.now(),
+    }),
+  ),
+  "owner comments",
+);
+const kindsFor = async (userId: string) => (await notificationsOf(userId, `ticket_id = '${pgId}'`)).map((n) => n.kind).sort();
+assert.deepEqual(
+  await kindsFor(bob.userId),
+  ["comment", "comment", "ticket_assigned", "ticket_status"],
+  "creator + assignee: both comments",
+);
+assert.deepEqual(await kindsFor(carol.userId), ["comment"], "previous commenter follows the ticket");
+assert.deepEqual(await kindsFor(owner.userId), [], "the actor is never notified");
+step("notifications: assignment, status and comments reach creator, assignee and previous commenters");
+
+// 28. Read state, archive, isolation
+const bobPanel = await zb.run(queries.notifications.list({ organizationId: orgId, filter: "unread", limit: 100 }), { type: "complete" });
+const bobUnreadDb = await notificationsOf(bob.userId, "read_at is null and archived_at is null");
+assert.equal(bobPanel.length, bobUnreadDb.length, "unread panel = unread rows");
+assert.ok(
+  bobPanel.every((n) => n.userId === bob.userId && n.organizationId === orgId),
+  "only bob's notifications of this organization",
+);
+const firstNotif = bobPanel[0];
+assert.ok(firstNotif);
+await rejected(zc.mutate(mutators.notifications.setRead({ ids: [firstNotif.id], read: true, at: Date.now() })), "carol marking bob's");
+assert.equal((await notificationsOf(bob.userId, `id = '${firstNotif.id}'`))[0].read_at, null);
+await ok(zb.mutate(mutators.notifications.setRead({ ids: [firstNotif.id], read: true, at: Date.now() })), "mark read");
+assert.notEqual((await notificationsOf(bob.userId, `id = '${firstNotif.id}'`))[0].read_at, null);
+await ok(zb.mutate(mutators.notifications.setRead({ ids: [firstNotif.id], read: false, at: Date.now() })), "mark unread");
+assert.equal((await notificationsOf(bob.userId, `id = '${firstNotif.id}'`))[0].read_at, null);
+await ok(zb.mutate(mutators.notifications.archive({ ids: [firstNotif.id], at: Date.now() })), "archive");
+const bobAll = await zb.run(queries.notifications.list({ organizationId: orgId, filter: "all", limit: 100 }), { type: "complete" });
+assert.ok(!bobAll.some((n) => n.id === firstNotif.id), "archived notifications leave the panel");
+await ok(zb.mutate(mutators.notifications.markAllRead({ organizationId: orgId, at: Date.now() })), "mark all read");
+assert.equal((await notificationsOf(bob.userId, "read_at is null")).length, 0, "everything read");
+assert.equal(
+  (await ze.run(queries.notifications.list({ organizationId: orgId, filter: "all", limit: 100 }), { type: "complete" })).length,
+  0,
+  "other organization: nothing",
+);
+step("notifications: read/unread, archive, mark all read; nobody touches someone else's");
+
+// 29. Search: prefixes, case and accents, permissions
+async function searchAs(x: Session, params: Record<string, string>) {
+  const res = await fetch(`${API}/api/search?${new URLSearchParams({ organizationId: orgId, ...params })}`, {
+    headers: { cookie: x.cookie },
+  });
+  // biome-ignore lint/suspicious/noExplicitAny: loose JSON in a test
+  return { status: res.status, json: (await res.json()) as any };
+}
+const ids = async (x: Session, q: string, extra: Record<string, string> = {}) => {
+  const r = await searchAs(x, { q, ...extra });
+  assert.equal(r.status, 200, `search "${q}": ${r.status} ${JSON.stringify(r.json)}`);
+  return (r.json.results as { id: string; snippet: string }[]).map((x) => x.id);
+};
+const deploy = await say(zo, general.id, "Le déploiement du service Paiements a échoué cette nuit");
+assert.ok((await ids(bob, "deploiement")).includes(`message:${deploy}`), "accent-insensitive");
+assert.ok((await ids(bob, "DÉPLOIE paiem")).includes(`message:${deploy}`), "case-insensitive prefixes, all words");
+assert.ok(!(await ids(bob, "deploiement annulé")).includes(`message:${deploy}`), "every word must match");
+const capital = await say(zo, general.id, "Échec ÉNORME à l'Étape de paiement");
+assert.ok((await ids(bob, "echec enorme etape")).includes(`message:${capital}`), "accented capitals fold too");
+const hit = (await searchAs(bob, { q: "echoue" })).json.results.find((r: { id: string }) => r.id === `message:${deploy}`);
+assert.ok(hit?.snippet.includes("\uE000échoué\uE001"), `highlighted snippet keeps the original text: ${hit?.snippet}`);
+assert.ok(!(await ids(bob, "budget")).some((i) => i.startsWith("message:")), "private channel hidden from non-members");
+assert.ok((await ids(owner, "budget")).length > 0, "members find it");
+assert.ok(!(await ids(carol, "around")).includes(`message:${dmMention}`), "DMs hidden from outsiders");
+assert.ok((await ids(bob, "around")).includes(`message:${dmMention}`), "DM members find it");
+assert.ok((await ids(bob, "Bob Member audible")).includes(`message:${unmuted}`), "mentions are searchable by name");
+assert.equal((await searchAs(eve, { q: "deploiement" })).status, 403, "other organization: forbidden");
+const secret = newTicket(secId, "Secret roadmap for Q4");
+await ok(zo.mutate(secret), "owner creates a ticket in the private project");
+const secretNumber = Number((await db.query("select number from ticket where id = $1", [secret.args.id])).rows[0].number);
+assert.ok((await ids(owner, "secret roadmap")).includes(`ticket:${secret.args.id}`), "admin finds it");
+assert.ok((await ids(owner, `SEC-${secretNumber}`)).includes(`ticket:${secret.args.id}`), "search by key");
+assert.ok(!(await ids(bob, "secret roadmap")).includes(`ticket:${secret.args.id}`), "private project hidden");
+assert.ok(
+  (await ids(dave, "zebra")).some((i) => i.startsWith("comment:")),
+  "comments of readable tickets",
+);
+assert.deepEqual(await ids(dave, "zebra", { types: "message" }), [], "type filter");
+assert.ok((await ids(bob, "playground", { projectId: appId })).includes(`ticket:${pgId}`), "project filter");
+assert.deepEqual(await ids(bob, "playground", { projectId: secId }), [], "project filter excludes");
+await ok(zo.mutate(mutators.messages.delete({ organizationId: orgId, id: deploy, at: Date.now() })), "delete");
+assert.ok(!(await ids(bob, "deploiement")).includes(`message:${deploy}`), "deleted messages leave the index");
+assert.equal((await searchAs(bob, { q: "" })).status, 400, "empty query refused");
+step("search: prefixes, case/accent-insensitive, highlights, filters; never leaks private channels, DMs, projects or other orgs");
+
 await zd.close();
 await Promise.all([zb.close(), zo.close(), ze.close(), zc.close()]);
 await db.end();

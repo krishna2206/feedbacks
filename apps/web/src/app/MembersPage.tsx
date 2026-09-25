@@ -7,6 +7,7 @@ import { authClient } from "../lib/auth-client";
 import { getInstance } from "../lib/instance";
 import "./members.css";
 import { useOrg } from "./org-context";
+import { SettingsTabs } from "./settings/SettingsTabs";
 import { ViewHeader } from "./ViewHeader";
 
 type Invitation = { id: string; email: string; role: string; status: string; expiresAt: Date | string };
@@ -63,9 +64,10 @@ export function MembersPage() {
     <>
       <ViewHeader>
         <span className="crumb">
-          <Icon name="users" size={14} />
-          {t("members.title")}
+          <Icon name="settings" size={14} />
+          {t("settings.title")}
         </span>
+        <SettingsTabs current="members" />
       </ViewHeader>
       <div className="settings">
         <div className="settings__inner">

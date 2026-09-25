@@ -7,11 +7,12 @@ Most teams collect feedback in group chats: screenshots from support, bug report
 - **Chat**: public and private channels, direct messages, threads, @mentions, reactions, attachments (drag & drop or paste, image previews), unread counters.
 - **Messages → tickets**: select a message and its screenshot, create a ticket pre-filled from them, or link them to an existing ticket. Every ticket keeps its **source messages**, and the people who reported the problem are notified when it moves.
 - **Tickets**: projects with roles (lead, contributor, reporter, viewer) and visibility, list and board views, statuses, priorities, labels, assignees, comments and activity, keyboard-first navigation. Moving a ticket to another project keeps its former key working.
+- **Notifications, ⌘K and search**: a bell for what concerns you (mentions, assignments, status changes, comments on tickets you follow, "your message became a ticket"), never for direct messages: conversations stay in the chat. A command menu to do and find anything from the keyboard, and full-text search across messages, tickets and comments that ignores case and accents and never shows what you can't read.
 - **Knowledge base**: Markdown documents with folder permissions and version history.
 - **AI-native**: a REST API and an **MCP server**, so agents like Claude Code can read conversations, turn feedback into tickets and pick up work, with exactly the permissions of the person using them.
 - **Fast**: every interaction is instant. Data is synced locally with [Zero](https://zero.rocicorp.dev), so the UI never waits for the network.
 
-> **Status: early development.** Milestones M0 (foundations), M1 (chat) and M2 (tickets) are done. See the [roadmap](#roadmap).
+> **Status: early development.** Milestones M0 (foundations), M1 (chat), M2 (tickets) and M3 (notifications, command menu, search) are done. See the [roadmap](#roadmap).
 
 ## Stack
 
@@ -78,7 +79,7 @@ Four containers: `postgres` (with `wal_level=logical`), `api`, `zero-cache` and 
 | ✅ M0 | Foundations: monorepo, Postgres + Zero + API, auth and invitations, app shell, working channel, Docker, CI |
 | ✅ M1 | Chat: public/private channels, direct messages, threads, mentions, reactions, attachments (disk or S3), unread counters |
 | ✅ M2 | Tickets: projects and roles, list and board, **messages → ticket**, source messages, comments, activity |
-| M3 | Notifications, ⌘K command menu, full-text search |
+| ✅ M3 | Notifications (bell, preferences, browser notifications), ⌘K command menu, full-text search, keyboard shortcuts |
 | M4 | Knowledge base: Markdown documents, versions, permissions |
 | M5 | REST API v1, **MCP server**, CLI |
 | M6 | Production deployment guide, mobile app (Expo) |

@@ -133,6 +133,36 @@ export const queries = defineQueries({
       visibleTickets(ctx.userID, args.organizationId).related("project").orderBy("updatedAt", "desc").limit(args.limit),
     ),
   },
+  notifications: {
+    /**
+     * Notification panel: the user's own notifications in an organization, newest first.
+     * `unread` also feeds the badge, the tab title and browser notifications.
+     */
+    list: defineQuery(
+      z.object({ organizationId: id, filter: z.enum(["unread", "all"]), limit: z.number().int().min(1).max(200).default(100) }),
+      ({ ctx, args }) => {
+        const q = zql.notification
+          .where("userId", ctx.userID)
+          .where("organizationId", args.organizationId)
+          .where("archivedAt", "IS", null)
+          .whereExists("organization", (o) => o.whereExists("members", (m) => m.where("userId", ctx.userID)));
+        return (
+          (args.filter === "unread" ? q.where("readAt", "IS", null) : q)
+            .related("actor")
+            // Related rows follow the usual visibility rules (access may have changed since)
+            .related("ticket", (t) => ticketVisibilityFilter(t, ctx.userID, args.organizationId).related("project"))
+            .related("channel", (c) => channelVisibility(c, ctx.userID, args.organizationId))
+            .related("message", (m) => m.whereExists("channel", (c) => channelVisibility(c, ctx.userID, args.organizationId)))
+            .orderBy("createdAt", "desc")
+            .limit(args.limit)
+        );
+      },
+    ),
+    /** The user's notification preferences in an organization (undefined = defaults) */
+    settings: defineQuery(z.object({ organizationId: id }), ({ ctx, args }) =>
+      zql.notificationSetting.where("userId", ctx.userID).where("organizationId", args.organizationId).one(),
+    ),
+  },
   channels: {
     /** Every channel the user can see in an organization (joined or not) */
     list: defineQuery(z.object({ organizationId: id }), ({ ctx, args }) =>

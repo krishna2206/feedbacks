@@ -66,7 +66,6 @@
     }
   },
   "nav": {
-    "inbox": "Inbox",
     "myTickets": "Mes tickets",
     "tickets": "Mes tickets",
     "docs": "Documents",
@@ -139,7 +138,6 @@
     "composerPlaceholderDm": "Écrire à {{name}}"
   },
   "placeholder": {
-    "inbox": "Les notifications sur les tickets et les mentions apparaîtront ici.",
     "tickets": "Projets, tickets, vues liste et tableau arrivent au prochain jalon.",
     "docs": "Votre base de connaissances vivra ici."
   },
@@ -471,5 +469,179 @@
     "restore": "Restaurer le projet",
     "archive": "Archiver le projet",
     "removeMember": "Retirer du projet"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "titleUnread": "Notifications ({{count}} non lues)",
+    "unreadCount_one": "{{count}} non lue",
+    "unreadCount_other": "{{count}} non lues",
+    "markAllRead": "Tout marquer comme lu",
+    "markRead": "Marquer comme lu",
+    "markUnread": "Marquer comme non lu",
+    "archive": "Archiver",
+    "tabs": {
+      "unread": "Non lues",
+      "all": "Toutes"
+    },
+    "emptyUnread": "Vous êtes à jour.",
+    "empty": "Aucune notification pour l'instant.",
+    "settingsLink": "Préférences de notification",
+    "someone": "Quelqu'un",
+    "directMessage": "Message direct",
+    "phrase": {
+      "mention": "vous a mentionné",
+      "ticket_assigned": "vous a assigné",
+      "ticket_status": "l'a passé en {{status}}",
+      "comment": "a commenté",
+      "ticket_from_my_message": "a créé un ticket à partir de votre message",
+      "access_request": "a demandé l'accès"
+    }
+  },
+  "settings": {
+    "title": "Réglages",
+    "tabs": {
+      "notifications": "Notifications",
+      "members": "Membres"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "intro": "Choisissez ce qui mérite votre attention. Les conversations restent dans le chat, avec leurs badges de non-lus.",
+      "kindsTitle": "Me notifier pour",
+      "dmNote": "Les messages directs ne créent jamais de notification : ils apparaissent comme conversations non lues dans la barre latérale.",
+      "browserTitle": "Bureau",
+      "browserLabel": "Notifications du navigateur",
+      "browserHint": "Afficher une notification système quand quelque chose arrive alors que cet onglet n'a pas le focus.",
+      "browserUnsupported": "Ce navigateur ne prend pas en charge les notifications.",
+      "browserDenied": "Les notifications sont bloquées pour ce site dans les réglages du navigateur.",
+      "kinds": {
+        "mention": {
+          "label": "Mentions",
+          "hint": "Quand quelqu'un vous mentionne dans un canal, un fil ou un commentaire de ticket"
+        },
+        "ticket_assigned": {
+          "label": "Assignations",
+          "hint": "Quand un ticket vous est assigné"
+        },
+        "ticket_status": {
+          "label": "Changements de statut",
+          "hint": "Quand un ticket que vous avez créé, qui vous est assigné ou que vous avez signalé avance"
+        },
+        "comment": {
+          "label": "Commentaires",
+          "hint": "Nouveaux commentaires sur les tickets que vous suivez (créés, assignés, signalés ou commentés)"
+        },
+        "ticket_from_my_message": {
+          "label": "Vos messages devenus tickets",
+          "hint": "Quand quelqu'un transforme l'un de vos messages en ticket"
+        },
+        "access_request": {
+          "label": "Demandes d'accès",
+          "hint": "Quand quelqu'un demande l'accès à un document que vous gérez"
+        }
+      }
+    }
+  },
+  "cmdk": {
+    "label": "Menu de commandes",
+    "placeholder": "Tapez une commande ou recherchez…",
+    "filterPlaceholder": "Filtrer…",
+    "groups": {
+      "recent": "Récents",
+      "ticket": "Ticket",
+      "channel": "Canal",
+      "create": "Créer",
+      "navigate": "Naviguer",
+      "tickets": "Tickets",
+      "messages": "Messages",
+      "people": "Personnes",
+      "status": "Changer le statut",
+      "priority": "Changer la priorité",
+      "assignee": "Assigner à",
+      "labels": "Labels",
+      "project": "Déplacer vers un projet",
+      "language": "Langue"
+    },
+    "changeStatus": "Changer le statut…",
+    "changePriority": "Changer la priorité…",
+    "assign": "Assigner à…",
+    "changeLabels": "Changer les labels…",
+    "moveProject": "Déplacer vers un projet…",
+    "copyKey": "Copier {{key}}",
+    "copyLink": "Copier le lien",
+    "linkCopied": "Lien copié",
+    "newTicketHere": "Nouveau ticket depuis cette conversation",
+    "newTicketFrom": "Nouveau ticket depuis #{{name}}",
+    "markChannelRead": "Marquer le canal comme lu",
+    "changeLanguage": "Changer de langue…",
+    "sendMessage": "Envoyer un message",
+    "noResults": "Aucun résultat",
+    "nothing": "Rien ici",
+    "footNavigate": "naviguer",
+    "footOpen": "ouvrir",
+    "allResults": "Tous les résultats"
+  },
+  "search": {
+    "title": "Recherche",
+    "placeholder": "Rechercher dans les messages, tickets et commentaires…",
+    "clear": "Effacer",
+    "clearFilter": "Retirer le filtre",
+    "hint": "Tapez pour rechercher. Chaque mot est cherché comme un début de mot, sans tenir compte de la casse ni des accents.",
+    "error": "La recherche a échoué. Réessayez dans un instant.",
+    "noResults": "Aucun résultat pour « {{q}} »",
+    "count_one": "{{count}} résultat",
+    "count_other": "{{count}} résultats",
+    "in": "dans {{where}}",
+    "commentBy": "{{name}} a commenté :",
+    "types": {
+      "all": "Tout",
+      "message": "Messages",
+      "ticket": "Tickets",
+      "comment": "Commentaires"
+    },
+    "filters": {
+      "channel": "Canal",
+      "project": "Projet",
+      "author": "Auteur",
+      "date": "Date"
+    },
+    "range": {
+      "7d": "7 derniers jours",
+      "30d": "30 derniers jours",
+      "365d": "Dernière année"
+    }
+  },
+  "shortcuts": {
+    "title": "Raccourcis clavier",
+    "then": "puis",
+    "groups": {
+      "general": "Général",
+      "navigation": "Aller à",
+      "lists": "Listes de tickets",
+      "chat": "Chat"
+    },
+    "items": {
+      "commandMenu": "Menu de commandes",
+      "search": "Recherche",
+      "newTicket": "Nouveau ticket",
+      "sidebar": "Afficher / masquer la barre latérale",
+      "help": "Raccourcis clavier",
+      "myTickets": "Mes tickets",
+      "projects": "Projets",
+      "docs": "Documents",
+      "settings": "Réglages",
+      "move": "Suivant / précédent",
+      "open": "Ouvrir",
+      "select": "Sélectionner",
+      "status": "Statut",
+      "priority": "Priorité",
+      "assignee": "Assigné",
+      "labels": "Labels",
+      "clear": "Vider la sélection",
+      "selectMessage": "Sélectionner le message survolé",
+      "ticketFromSelection": "Ticket depuis la sélection",
+      "linkSelection": "Lier la sélection à un ticket",
+      "send": "Envoyer",
+      "newLine": "Nouvelle ligne"
+    }
   }
 }

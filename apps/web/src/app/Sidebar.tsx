@@ -8,11 +8,12 @@ import { LANGUAGES, setLanguage } from "../i18n";
 import { authClient } from "../lib/auth-client";
 import { setTheme, useTheme } from "../lib/theme";
 import { BrowseChannelsModal, NewDmModal } from "./chat/ChannelModals";
-import { NewChannelModal } from "./NewChannelModal";
+import { NotificationsBell } from "./notifications/NotificationsBell";
 import { useOrg } from "./org-context";
 import { setSidebar, useSidebar } from "./sidebar-state";
 import { openCreateTicket, useProjects } from "./tickets/data";
 import { ProjectBadge } from "./tickets/meta";
+import { openCommandMenu, openNewChannel, openShortcutsHelp, preloadCommandMenu } from "./ui-state";
 
 function NavLink({
   to,
@@ -66,7 +67,6 @@ export function Sidebar() {
   const [browse, setBrowse] = useState(false);
   const [newDm, setNewDm] = useState(false);
   const wsMenu = useMenu();
-  const [newChannel, setNewChannel] = useState(false);
   const [dragging, setDragging] = useState(false);
   const moved = useRef(false);
 
@@ -113,8 +113,17 @@ export function Sidebar() {
             <Caret />
           </button>
           <div style={{ display: "flex" }}>
-            <Tooltip content={`${t("nav.search")} · ${t("common.comingSoon")}`} shortcut={["⌘", "K"]} placement="bottom">
-              <Button variant="muted" size="md" iconOnly icon={<Icon name="search" />} aria-label={t("nav.search")} />
+            <NotificationsBell />
+            <Tooltip content={t("nav.search")} shortcut={["⌘", "K"]} placement="bottom">
+              <Button
+                variant="muted"
+                size="md"
+                iconOnly
+                icon={<Icon name="search" />}
+                onClick={openCommandMenu}
+                onMouseEnter={preloadCommandMenu}
+                aria-label={t("nav.search")}
+              />
             </Tooltip>
             <Tooltip content={t("nav.newTicket")} shortcut="C" placement="bottom">
               <Button
@@ -130,7 +139,6 @@ export function Sidebar() {
         </div>
 
         <div className="sidebar__scroll">
-          <NavLink to="/$orgSlug/inbox" params={{ orgSlug: org.slug }} icon={<Icon name="inbox" />} label={t("nav.inbox")} />
           <NavLink to="/$orgSlug/tickets" params={{ orgSlug: org.slug }} icon={<Icon name="target" />} label={t("nav.tickets")} />
           <NavLink to="/$orgSlug/docs" params={{ orgSlug: org.slug }} icon={<Icon name="doc" />} label={t("nav.docs")} />
 
@@ -175,7 +183,7 @@ export function Sidebar() {
                   size="sm"
                   iconOnly
                   icon={<Icon name="plus" size={14} />}
-                  onClick={() => setNewChannel(true)}
+                  onClick={openNewChannel}
                   aria-label={t("nav.newChannel")}
                 />
               </Tooltip>
@@ -271,10 +279,23 @@ export function Sidebar() {
         header={<div className="menu-group">{user.email}</div>}
         items={[
           {
+            id: "notifications",
+            label: t("settings.notifications.title"),
+            icon: <Icon name="bell" />,
+            onSelect: () => void navigate({ to: "/$orgSlug/settings/notifications", params: { orgSlug: org.slug } }),
+          },
+          {
             id: "members",
             label: t("members.nav"),
             icon: <Icon name="users" />,
             onSelect: () => void navigate({ to: "/$orgSlug/settings/members", params: { orgSlug: org.slug } }),
+          },
+          {
+            id: "shortcuts",
+            label: t("shortcuts.title"),
+            icon: <Icon name="cmd" />,
+            hint: "?",
+            onSelect: openShortcutsHelp,
           },
           { kind: "separator", id: "s0" },
           {
@@ -302,7 +323,6 @@ export function Sidebar() {
           },
         ]}
       />
-      <NewChannelModal open={newChannel} onClose={() => setNewChannel(false)} />
       <BrowseChannelsModal open={browse} onClose={() => setBrowse(false)} />
       <NewDmModal open={newDm} onClose={() => setNewDm(false)} />
     </div>

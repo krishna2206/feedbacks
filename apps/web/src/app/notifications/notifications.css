@@ -1,0 +1,91 @@
+/* ============== Notifications: bell + panel (no Inbox page) ============== */
+.notif-bell { position: relative; display: inline-flex; }
+.notif-bell__badge {
+  position: absolute; top: 2px; right: 1px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; pointer-events: none;
+  display: grid; place-items: center; font-size: 10px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums;
+  background: var(--control-primary); color: var(--control-primary-label);
+  box-shadow: 0 0 0 2px var(--bg-base); /* cut-out against the sidebar */
+  animation: notif-pop .25s var(--ease-out-quad) both;
+}
+@keyframes notif-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.notif-panel { display: flex; flex-direction: column; max-height: min(560px, 72vh); }
+.notif-panel__head {
+  display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 14px; flex-shrink: 0;
+}
+.notif-panel__title { font-weight: 500; color: var(--label-title); }
+.notif-panel__count { font-size: 12px; color: var(--label-muted); font-variant-numeric: tabular-nums; }
+.notif-panel__tabs {
+  display: flex; gap: 6px; padding: 0 12px 8px; flex-shrink: 0;
+  border-bottom: var(--thin-pixel) solid var(--bg-border-faint-thin);
+}
+.notif-panel__list { overflow-y: auto; padding: 6px 0; min-height: 0; }
+.notif-panel__foot { flex-shrink: 0; padding: 6px; border-top: var(--thin-pixel) solid var(--bg-border-faint-thin); }
+.notif-panel__link {
+  width: 100%; height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--label-muted); font-size: 12px; transition: background-color .15s, color .15s;
+}
+.notif-panel__link:hover { background: var(--bg-focus); color: var(--label-title); transition-duration: 0s; }
+
+/* Row: margin-x 6, padding 10/8, radius 8, gap 12 */
+.notif-row {
+  position: relative; margin: 0 6px; padding: 10px 8px; display: flex; align-items: flex-start; gap: 12px; border-radius: 8px;
+  cursor: default; user-select: none; outline: none; transition: background-color .15s;
+}
+.notif-row:hover, .notif-row:focus-visible { background: var(--bg-focus); transition-duration: 0s; }
+.notif-row__avatar { padding-top: 1px; flex-shrink: 0; }
+.notif-row__content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.notif-row__title { height: 17px; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--control-primary); flex-shrink: 0; animation: notif-pop .25s var(--ease-out-quad) both; }
+.notif-row__key { font-size: 13px; color: var(--label-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.notif-row__name { font-weight: 500; color: var(--label-base); }
+.notif-row__icon { margin-left: auto; flex-shrink: 0; display: flex; }
+.notif-row__sub { min-height: 16px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--label-muted); min-width: 0; }
+.notif-row__sub b { font-weight: 500; color: var(--label-base); }
+.notif-row__sub .truncate { flex: 1; }
+.notif-row__age { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.notif-row[data-read="true"] .notif-row__content, .notif-row[data-read="true"] .notif-row__avatar { opacity: .7; transition: opacity .1s; }
+[data-theme="light"] .notif-row[data-read="true"] .notif-row__content, [data-theme="light"] .notif-row[data-read="true"] .notif-row__avatar { opacity: .8; }
+.notif-row[data-read="true"] .notif-row__name { color: var(--label-muted); }
+
+/* Hover actions (mark read/unread, archive) replace the age on the right */
+.notif-row__actions {
+  position: absolute; right: 6px; top: 8px; display: flex; gap: 2px; padding: 2px; border-radius: 8px;
+  background: var(--bg-focus); opacity: 0; pointer-events: none;
+}
+.notif-row:hover .notif-row__actions, .notif-row:focus-within .notif-row__actions { opacity: 1; pointer-events: auto; }
+
+.notif-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 24px; color: var(--label-muted); text-align: center; }
+.notif-empty svg { color: var(--label-faint); }
+
+/* ============== Settings › Notifications ============== */
+.settings-page { flex: 1; overflow-y: auto; }
+.settings-inner { max-width: 640px; margin: 0 auto; padding: 40px 32px 80px; }
+.settings-inner h1 { font-size: 20px; font-weight: 500; letter-spacing: -.01rem; color: var(--label-title); }
+.settings-inner > p { margin-top: 6px; color: var(--label-muted); }
+.settings-section { margin-top: 28px; }
+.settings-section h2 { font-size: 13px; font-weight: 500; color: var(--label-title); margin-bottom: 10px; }
+.settings-card {
+  border-radius: 10px; background: var(--bg-base); overflow: hidden;
+  box-shadow: 0 0 0 var(--thin-pixel) var(--bg-border-faint), var(--shadow-low);
+}
+.settings-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 16px; }
+.settings-row + .settings-row { border-top: var(--thin-pixel) solid var(--bg-border-faint-thin); }
+.settings-row__text { flex: 1; min-width: 0; }
+.settings-row__label { color: var(--label-base); font-weight: 500; }
+.settings-row__hint { margin-top: 2px; font-size: 12px; color: var(--label-muted); }
+.settings-row > svg { color: var(--label-muted); flex-shrink: 0; }
+.settings-note { margin-top: 10px; font-size: 12px; color: var(--label-muted); }
+
+.switch {
+  position: relative; width: 30px; height: 20px; flex-shrink: 0; border-radius: 72px; border: 0; padding: 0;
+  background: color-mix(in srgb, var(--label-base) 22%, var(--bg-base)); transition: background-color .15s ease-out;
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 7px;
+  background: var(--control-primary-label); transition: left .1s ease-out;
+}
+.switch[aria-checked="true"] { background: var(--control-primary); }
+.switch[aria-checked="true"]::after { left: 13px; }
+.switch:focus-visible { outline: 1px solid var(--focus-color); outline-offset: 2px; }
+.switch:disabled { opacity: .5; }

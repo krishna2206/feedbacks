@@ -6,7 +6,7 @@
  *   Defaults below only help server-side scripts (seed, migrations).
  * - Enumerations are plain `text` columns validated by Zod in mutators (see `src/enums.ts`).
  */
-import { boolean, index, integer, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, customType, index, integer, json, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
 import type {
   AccessLevel,
   ActivityKind,
@@ -366,8 +366,33 @@ export const notification = pgTable(
     body: text("body").notNull().default(""),
     createdAt: createdAt(),
     readAt: timestampTz("read_at"),
+    /** Hidden from the notification panel (kept for history) */
+    archivedAt: timestampTz("archived_at"),
   },
-  (t) => [index("notification_user_idx").on(t.userId, t.createdAt, t.id)],
+  (t) => [
+    index("notification_user_idx").on(t.userId, t.createdAt, t.id),
+    // Panel ("all") and badge ("unread") of one organization, newest first
+    index("notification_panel_idx").on(t.userId, t.organizationId, t.archivedAt, t.createdAt, t.id),
+    index("notification_unread_idx").on(t.userId, t.organizationId, t.archivedAt, t.readAt, t.createdAt, t.id),
+  ],
+);
+
+/** Per-user notification preferences in an organization (id = `${organizationId}:${userId}`) */
+export const notificationSetting = pgTable(
+  "notification_setting",
+  {
+    id: text("id").primaryKey(),
+    organizationId: orgId(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Notification kinds the user doesn't want (never created for them) */
+    mutedKinds: json("muted_kinds").$type<NotificationKind[]>().notNull().default([]),
+    /** Desktop notifications through the browser Notification API (opt-in) */
+    browserEnabled: boolean("browser_enabled").notNull().default(false),
+    updatedAt: timestampTz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("notification_setting_user_org_uq").on(t.userId, t.organizationId)],
 );
 
 /* ------------------------------------------------------------------ */
@@ -445,6 +470,36 @@ export const accessGrant = pgTable(
 /* ------------------------------------------------------------------ */
 /* Internal (never synced)                                             */
 /* ------------------------------------------------------------------ */
+
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
+
+/**
+ * Full-text search index (messages, tickets, comments; documents in M4). Maintained by triggers on
+ * the source tables (see migration 0004), queried by `GET /api/search` with permission filters.
+ * `tsv` = `simple` configuration over text folded by `search_fold` (unaccent): matching ignores case
+ * and accents in every language.
+ */
+export const searchDoc = pgTable(
+  "search_doc",
+  {
+    /** `${kind}:${entityId}` */
+    id: text("id").primaryKey(),
+    organizationId: orgId(),
+    kind: text("kind").$type<"message" | "ticket" | "comment" | "doc">().notNull(),
+    entityId: text("entity_id").notNull(),
+    channelId: text("channel_id"),
+    projectId: text("project_id"),
+    ticketId: text("ticket_id"),
+    authorId: text("author_id"),
+    createdAt: timestampTz("created_at").notNull(),
+    /** Ticket key + title, document title (weight A) */
+    title: text("title").notNull().default(""),
+    /** Message / comment body with mentions resolved to names, ticket description (weight B) */
+    body: text("body").notNull().default(""),
+    tsv: tsvector("tsv").notNull(),
+  },
+  (t) => [index("search_doc_tsv_idx").using("gin", t.tsv), index("search_doc_org_idx").on(t.organizationId, t.kind, t.createdAt)],
+);
 
 /**
  * Files to delete from storage. Filled by a trigger whenever an `attachment` row is deleted

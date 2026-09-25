@@ -3,6 +3,7 @@ import { defineMutator, defineMutators, type Transaction } from "@rocicorp/zero"
 import { z } from "zod";
 import { DM_MAX_MEMBERS, dmChannelId, excerpt, mentionedUserIds, normalizeChannelName } from "../chat";
 import { channelKind } from "../enums";
+import { notificationMutators, wantsNotification } from "./mutators-notifications";
 import { commentMutators, labelMutators, projectMutators, ticketMutators } from "./mutators-tickets";
 import { assertCanManageChannel, assertCanReadChannel, assertOrgMember, isOrgAdmin, orgMembership, PermissionError } from "./permissions";
 import { zql } from "./schema";
@@ -52,7 +53,10 @@ async function ensureMembership(
   });
 }
 
-/** Creates `mention` notifications for users mentioned in a message who can read its channel */
+/**
+ * Creates `mention` notifications for users mentioned in a message who can read its channel.
+ * Direct messages never notify: a conversation lives in the chat (unread badge), not in the notifications.
+ */
 async function notifyMentions(
   tx: Transaction,
   authorId: string,
@@ -61,12 +65,13 @@ async function notifyMentions(
 ) {
   if (tx.location !== "server") return; // notifications only matter to their recipients
   const channel = await tx.run(zql.channel.where("id", msg.channelId).related("members").one());
-  if (!channel) return;
+  if (!channel || channel.kind === "dm") return;
   for (const userId of mentionedUserIds(msg.body)) {
     if (userId === authorId || alreadyNotified.includes(userId)) continue;
     if (!(await orgMembership(tx, userId, msg.organizationId))) continue;
     // Private channels and DMs: only notify people who can read the message
     if (channel.kind !== "public" && !channel.members.some((m) => m.userId === userId)) continue;
+    if (!(await wantsNotification(tx, userId, msg.organizationId, "mention"))) continue;
     await tx.mutate.notification.upsert({
       id: `${msg.id}:mention:${userId}`,
       organizationId: msg.organizationId,
@@ -446,4 +451,5 @@ export const mutators = defineMutators({
   labels: labelMutators,
   tickets: ticketMutators,
   comments: commentMutators,
+  notifications: notificationMutators,
 });

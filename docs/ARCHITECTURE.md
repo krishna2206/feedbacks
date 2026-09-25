@@ -40,8 +40,8 @@ Every business table has `organization_id`, so an instance can host several orga
 | Projects | `project` (key → `APP-42`, server-side ticket counter, visibility `org`/`members`), `project_member` (lead/contributor/reporter/viewer), `label` |
 | Chat | `channel` (public/private/dm, optional default project, `last_seq`), `channel_member` (`last_read_seq`), `message` (`seq`, `parent_id` for threads, `reply_count`, `ticket_count`), `attachment` (pending until sent), `reaction` |
 | Tickets | `ticket`, `ticket_label`, **`ticket_source`** (N:N ticket ↔ message, the link from feedback to work), `ticket_alias` (former keys of moved tickets), `comment`, `activity` |
-| Notifications | `notification` (mentions, assignments, status changes, "your message became a ticket", access requests) |
-| Internal (not synced) | `storage_deletion` (files waiting to be deleted from storage, with retry state) |
+| Notifications | `notification` (mentions, assignments, status changes, comments, "your message became a ticket", access requests; `read_at`, `archived_at`), `notification_setting` (per user and organization: muted kinds, browser notifications) |
+| Internal (not synced) | `storage_deletion` (files waiting to be deleted from storage, with retry state), `search_doc` (full-text index, maintained by triggers) |
 | Knowledge base | `doc_folder`, `doc` (Markdown), `doc_version`, `access_grant` (org/team/user × read/edit/manage, inherited through folders) |
 
 ### What gets synced
@@ -83,6 +83,32 @@ Deleting a message soft-deletes the message itself (its thread stays readable) b
 **Activities and notifications.** Mutations record activities (`created`, `status`, `priority`, `assignee`, `title`, `description`, `labels`, `project`, `linked_messages`, `unlinked_messages`) with ids derived from the caller's `eventId`, so the optimistic and authoritative runs write the same rows. Notifications are created on the server only: assignment (to the assignee), status change (creator, assignee and **authors of the source messages**: the people who reported the problem learn that it moved), "your message became a ticket" (source authors), comments and mentions. The actor is never notified.
 
 **Descriptions and comments** are Markdown rendered to React elements by a small block renderer (headings, quotes, lists, code) on top of the chat's inline renderer: no HTML string is ever injected, so there is nothing to sanitize.
+
+## Notifications and search
+
+**Notifications, not an inbox.** A conversation lives in the chat, where unread badges already show it; an *event* lives in the notifications. So there's no Inbox page: a bell in the sidebar opens a panel (Unread / All, mark read or unread, archive, mark all read), the tab title shows the unread count (`(3) Feedbacks`), and people can opt in to browser notifications, shown only when the tab isn't focused. The kinds:
+
+| Kind | Who gets it |
+|---|---|
+| `mention` | people mentioned in a channel, a thread or a ticket comment, if they can read it — **never in a direct message** |
+| `ticket_assigned` | the new assignee |
+| `ticket_status` | the creator, the assignee and the authors of the source messages |
+| `comment` | the ticket's followers: creator, assignee, source-message authors and previous commenters who can still read it |
+| `ticket_from_my_message` | authors of the messages a ticket was built from |
+| `access_request` | document managers (knowledge base, M4) |
+
+Notifications are written by the server mutators only, never for the actor. **Preferences** (`notification_setting`, one row per user and organization, id `${organizationId}:${userId}`) list muted kinds: a muted kind is simply never created for that person, so there's nothing to filter later. Read state and archiving go through `notifications.setRead / markAllRead / archive`, which refuse to touch someone else's rows. The panel and the badge use `notifications.list` (`unread` or `all`, own rows of one organization, newest first), indexed by `(user_id, organization_id, archived_at, [read_at,] created_at, id)`.
+
+**Full-text search** is served by the API (`GET /api/search`), not by Zero: it needs Postgres full-text search and a ranking, over data that isn't necessarily synced to the client.
+
+- *Index.* `search_doc` has one row per message, ticket and comment (documents come in M4), kept up to date by triggers on the source tables — insert, edit, soft-delete, move, cascade — and backfilled by the migration. Deleting a message removes it from search. `tsv` combines a weighted title (ticket key + title) and body (message with mentions rendered as @Name, ticket description, comment), built with the `simple` configuration over text folded by `search_fold` (`unaccent`): no stemming or stop words, so it behaves the same in every language, and matching ignores case and accents. Ticket keys are indexed as `APP 12`, since the parser reads `APP-12` as a word and the integer `-12`. When the `unaccent` extension isn't available, search still works but becomes accent-sensitive.
+- *Query.* Every word of the query must match the start of a word (`'deplo':* & 'paie':*`), so results follow the typing. Results are ranked by `ts_rank_cd`, then by date.
+- *Permissions.* The SQL applies the same rules as the Zero queries: messages of public channels of the organization and of channels (private, DMs) the user belongs to; tickets and comments of readable projects, or of tickets built from the user's messages. Non-members of the organization get a 403.
+- *Highlights.* Snippets are cut and highlighted by the API on the original text (`ts_headline` could only highlight the folded text and would lose accents), with private-use characters around matches that the client renders as `<mark>` elements, never as HTML.
+
+**Command menu (⌘K).** The chunk loads while the browser is idle. Typing filters commands, projects, channels and people locally (accent-insensitive), shows matching tickets from the local store instantly, then merges server results (tickets, comments, messages) as they arrive; requests are debounced (120 ms) and stale ones aborted. Sub-pages (status, priority, assignee, labels, project, language) act on the ticket or channel on screen. Recently opened items are kept per organization in `localStorage`.
+
+**Keyboard shortcuts** are global (capture phase, so a `G` then `P` sequence never reaches a page's own `P` handler) and never fire while typing: `⌘K`, `/` search, `?` help, `G` then `M` / `P` / `D` / `S`, `C` new ticket, `[` sidebar. Pages add their own (lists, chat selection, ticket page).
 
 ## Permissions
 

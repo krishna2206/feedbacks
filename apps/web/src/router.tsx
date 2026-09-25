@@ -1,5 +1,6 @@
 import { Toaster } from "@feedbacks/ui";
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, redirect } from "@tanstack/react-router";
+import { validateSearchParams } from "./app/search/params";
 import { authClient } from "./lib/auth-client";
 import { getInstance } from "./lib/instance";
 
@@ -93,10 +94,12 @@ const channelRoute = createRoute({
   }),
   component: lazyRouteComponent(() => import("./app/ChannelPage"), "ChannelPage"),
 });
-const inboxRoute = createRoute({
+/** Full-text search (?q=&type=&channel=&project=&author=&range=) */
+const searchRoute = createRoute({
   getParentRoute: () => orgRoute,
-  path: "/inbox",
-  component: lazyRouteComponent(() => import("./app/Placeholder"), "InboxPlaceholder"),
+  path: "/search",
+  validateSearch: (s: Record<string, unknown>) => validateSearchParams(s),
+  component: lazyRouteComponent(() => import("./app/search/SearchPage"), "SearchPage"),
 });
 const ticketsRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -136,6 +139,18 @@ const docsRoute = createRoute({
   component: lazyRouteComponent(() => import("./app/Placeholder"), "DocsPlaceholder"),
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/settings",
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/$orgSlug/settings/notifications", params: { orgSlug: params.orgSlug } });
+  },
+});
+const notificationSettingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/settings/notifications",
+  component: lazyRouteComponent(() => import("./app/notifications/NotificationSettingsPage"), "NotificationSettingsPage"),
+});
 const membersRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/settings/members",
@@ -152,13 +167,15 @@ const routeTree = rootRoute.addChildren([
   orgRoute.addChildren([
     orgIndexRoute,
     channelRoute,
-    inboxRoute,
+    searchRoute,
     ticketsRoute,
     projectsRoute,
     projectRoute,
     projectSettingsRoute,
     issueRoute,
     docsRoute,
+    settingsRoute,
+    notificationSettingsRoute,
     membersRoute,
   ]),
 ]);

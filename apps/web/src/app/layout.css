@@ -119,3 +119,11 @@ button.crumb:hover { background: var(--control-tertiary-hover); transition-durat
 .nav-link[data-unread] { color: var(--label-title); font-weight: 600; }
 .nav-link--button { width: 100%; border: 0; background: transparent; font: inherit; font-weight: 500; text-align: left; }
 .nav-empty { padding: 4px 8px; font-size: 12px; color: var(--label-faint); }
+
+/* ============== Shortcuts help ============== */
+.shortcuts-title { font-size: 15px; font-weight: 500; color: var(--label-title); }
+.shortcuts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; padding-bottom: 20px; }
+.shortcuts__group h3 { font-size: 12px; font-weight: 500; color: var(--label-muted); margin: 10px 0 4px; }
+.shortcuts__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; font-size: 13px; color: var(--label-base); }
+.shortcuts__keys { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+@media (max-width: 640px) { .shortcuts { grid-template-columns: 1fr; } }

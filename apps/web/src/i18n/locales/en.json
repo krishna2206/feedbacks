@@ -66,7 +66,6 @@
     }
   },
   "nav": {
-    "inbox": "Inbox",
     "myTickets": "My tickets",
     "tickets": "My tickets",
     "docs": "Documents",
@@ -139,7 +138,6 @@
     "composerPlaceholderDm": "Message {{name}}"
   },
   "placeholder": {
-    "inbox": "Notifications about tickets and mentions will appear here.",
     "tickets": "Projects, tickets, list and board views arrive in the next milestone.",
     "docs": "Your knowledge base will live here."
   },
@@ -471,5 +469,179 @@
     "restore": "Restore project",
     "archive": "Archive project",
     "removeMember": "Remove from project"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "titleUnread": "Notifications ({{count}} unread)",
+    "unreadCount_one": "{{count}} unread",
+    "unreadCount_other": "{{count}} unread",
+    "markAllRead": "Mark all as read",
+    "markRead": "Mark as read",
+    "markUnread": "Mark as unread",
+    "archive": "Archive",
+    "tabs": {
+      "unread": "Unread",
+      "all": "All"
+    },
+    "emptyUnread": "You're all caught up.",
+    "empty": "No notifications yet.",
+    "settingsLink": "Notification settings",
+    "someone": "Someone",
+    "directMessage": "Direct message",
+    "phrase": {
+      "mention": "mentioned you",
+      "ticket_assigned": "assigned you",
+      "ticket_status": "moved it to {{status}}",
+      "comment": "commented",
+      "ticket_from_my_message": "created a ticket from your message",
+      "access_request": "requested access"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "notifications": "Notifications",
+      "members": "Members"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "intro": "Choose what deserves your attention. Conversations stay in the chat, with their unread badges.",
+      "kindsTitle": "Notify me about",
+      "dmNote": "Direct messages never create notifications: they show up as unread conversations in the sidebar.",
+      "browserTitle": "Desktop",
+      "browserLabel": "Browser notifications",
+      "browserHint": "Show a system notification when something arrives while this tab isn't focused.",
+      "browserUnsupported": "This browser doesn't support notifications.",
+      "browserDenied": "Notifications are blocked for this site in your browser settings.",
+      "kinds": {
+        "mention": {
+          "label": "Mentions",
+          "hint": "When someone mentions you in a channel, a thread or a ticket comment"
+        },
+        "ticket_assigned": {
+          "label": "Assignments",
+          "hint": "When a ticket is assigned to you"
+        },
+        "ticket_status": {
+          "label": "Status changes",
+          "hint": "When a ticket you created, are assigned to or reported moves"
+        },
+        "comment": {
+          "label": "Comments",
+          "hint": "New comments on tickets you follow (created, assigned, reported or commented)"
+        },
+        "ticket_from_my_message": {
+          "label": "Your messages became tickets",
+          "hint": "When someone turns one of your messages into a ticket"
+        },
+        "access_request": {
+          "label": "Access requests",
+          "hint": "When someone asks for access to a document you manage"
+        }
+      }
+    }
+  },
+  "cmdk": {
+    "label": "Command menu",
+    "placeholder": "Type a command or search…",
+    "filterPlaceholder": "Filter…",
+    "groups": {
+      "recent": "Recent",
+      "ticket": "Ticket",
+      "channel": "Channel",
+      "create": "Create",
+      "navigate": "Navigate",
+      "tickets": "Tickets",
+      "messages": "Messages",
+      "people": "People",
+      "status": "Change status",
+      "priority": "Change priority",
+      "assignee": "Assign to",
+      "labels": "Labels",
+      "project": "Move to project",
+      "language": "Language"
+    },
+    "changeStatus": "Change status…",
+    "changePriority": "Change priority…",
+    "assign": "Assign to…",
+    "changeLabels": "Change labels…",
+    "moveProject": "Move to project…",
+    "copyKey": "Copy {{key}}",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "newTicketHere": "New ticket from this conversation",
+    "newTicketFrom": "New ticket from #{{name}}",
+    "markChannelRead": "Mark channel as read",
+    "changeLanguage": "Change language…",
+    "sendMessage": "Send a message",
+    "noResults": "No results",
+    "nothing": "Nothing here",
+    "footNavigate": "navigate",
+    "footOpen": "open",
+    "allResults": "All results"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search messages, tickets and comments…",
+    "clear": "Clear",
+    "clearFilter": "Remove filter",
+    "hint": "Type to search. Every word is matched as a prefix, ignoring case and accents.",
+    "error": "Search failed. Try again in a moment.",
+    "noResults": "No results for “{{q}}”",
+    "count_one": "{{count}} result",
+    "count_other": "{{count}} results",
+    "in": "in {{where}}",
+    "commentBy": "{{name}} commented:",
+    "types": {
+      "all": "All",
+      "message": "Messages",
+      "ticket": "Tickets",
+      "comment": "Comments"
+    },
+    "filters": {
+      "channel": "Channel",
+      "project": "Project",
+      "author": "Author",
+      "date": "Date"
+    },
+    "range": {
+      "7d": "Past 7 days",
+      "30d": "Past 30 days",
+      "365d": "Past year"
+    }
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "then": "then",
+    "groups": {
+      "general": "General",
+      "navigation": "Go to",
+      "lists": "Ticket lists",
+      "chat": "Chat"
+    },
+    "items": {
+      "commandMenu": "Command menu",
+      "search": "Search",
+      "newTicket": "New ticket",
+      "sidebar": "Show / hide the sidebar",
+      "help": "Keyboard shortcuts",
+      "myTickets": "My tickets",
+      "projects": "Projects",
+      "docs": "Documents",
+      "settings": "Settings",
+      "move": "Next / previous",
+      "open": "Open",
+      "select": "Select",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "labels": "Labels",
+      "clear": "Clear the selection",
+      "selectMessage": "Select the hovered message",
+      "ticketFromSelection": "Ticket from the selection",
+      "linkSelection": "Link the selection to a ticket",
+      "send": "Send",
+      "newLine": "New line"
+    }
   }
 }

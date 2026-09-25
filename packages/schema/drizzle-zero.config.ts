@@ -32,11 +32,13 @@ export default drizzleZeroConfig(drizzleSchema, {
     comment: true,
     activity: true,
     notification: true,
+    notificationSetting: true,
     docFolder: true,
     doc: true,
     docVersion: true,
     accessGrant: true,
-    // Internal file-deletion queue: never synced
+    // Internal file-deletion queue and full-text index: never synced
     storageDeletion: false,
+    searchDoc: false,
   },
 });

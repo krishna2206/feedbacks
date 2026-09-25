@@ -22,8 +22,9 @@ export function myOrganizations(userID: string) {
  * Restricts a channel query to what the user may see in an organization:
  * public channels for any org member, private channels and DMs for their members only.
  */
-export function channelVisibility(q: ChannelQuery, userID: string, organizationId: string): ChannelQuery {
-  return q.where("organizationId", organizationId).where(({ or, and, cmp, exists }) =>
+// biome-ignore lint/suspicious/noExplicitAny: works on list queries and one-to-one relationships (shape preserved by the cast)
+export function channelVisibility<Q extends Query<"channel", Schema, any>>(q: Q, userID: string, organizationId: string): Q {
+  return (q as unknown as ChannelQuery).where("organizationId", organizationId).where(({ or, and, cmp, exists }) =>
     or(
       and(
         cmp("kind", "public"),
@@ -31,7 +32,7 @@ export function channelVisibility(q: ChannelQuery, userID: string, organizationI
       ),
       exists("members", (m) => m.where("userId", userID)),
     ),
-  );
+  ) as unknown as Q;
 }
 
 export const visibleChannels = (userID: string, organizationId: string) => channelVisibility(zql.channel, userID, organizationId);
