@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage } from "../../i18n";
 import { setTheme, useTheme } from "../../lib/theme";
+import { useDocIndex } from "../docs/data";
 import { useGo } from "../go";
 import { useOrg } from "../org-context";
 import { useOrgMembers } from "../org-data";
@@ -165,7 +166,8 @@ export function CommandMenu({ closing }: { closing: boolean }) {
 
   /* ----------------------------- Items ----------------------------- */
   const q = query.trim();
-  const server = useServerSearch(org.id, page.id === "root" ? q : "", { types: ["ticket", "comment", "message"], limit: 12 });
+  const docIndex = useDocIndex();
+  const server = useServerSearch(org.id, page.id === "root" ? q : "", { types: ["ticket", "comment", "message", "doc"], limit: 16 });
 
   // Rebuilt on every render: a few hundred items at most, cheaper than tracking every input
   const items: Item[] = (() => {
@@ -395,7 +397,8 @@ export function CommandMenu({ closing }: { closing: boolean }) {
         hint: <Kbd keys="/" />,
         run: goTo(() => go.search(q || undefined)),
       },
-      { id: "nav:docs", group: nav, label: t("nav.docs"), icon: icon("doc"), run: goTo(go.docs) },
+      { id: "nav:docs", group: nav, label: t("nav.docs"), icon: icon("doc"), hint: <Kbd keys={["G", "D"]} />, run: goTo(() => go.docs()) },
+      { id: "nav:teams", group: nav, label: t("settings.tabs.teams"), icon: icon("team"), run: goTo(() => go.settings("teams")) },
       {
         id: "nav:settings",
         group: nav,
@@ -515,6 +518,28 @@ export function CommandMenu({ closing }: { closing: boolean }) {
             run: openTicket(r.ticket.key, r.ticket.title, r.ticket.status),
           });
         }
+      }
+      // Documents: titles of readable documents first (local), then full-text matches (server)
+      const docsGroup = g("docs");
+      const seenDocs = new Set<string>();
+      for (const d of docIndex.values()) {
+        if (seenDocs.size >= 5) break;
+        if (!matchesQuery(d.title, q)) continue;
+        seenDocs.add(d.id);
+        filtered.push({ id: `doc:${d.id}`, group: docsGroup, label: d.title, icon: icon("doc"), run: goTo(() => go.doc(d.id)) });
+      }
+      for (const r of server.results) {
+        if (r.kind !== "doc" || !r.doc || seenDocs.has(r.doc.id) || seenDocs.size >= 7) continue;
+        seenDocs.add(r.doc.id);
+        const docId = r.doc.id;
+        filtered.push({
+          id: `sdoc:${docId}`,
+          group: docsGroup,
+          label: r.title ? <Highlighted text={r.title} /> : r.doc.title,
+          detail: r.snippet ? <Highlighted text={r.snippet} /> : undefined,
+          icon: icon("doc"),
+          run: goTo(() => go.doc(docId)),
+        });
       }
       let messages = 0;
       for (const r of server.results) {

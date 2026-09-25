@@ -5,6 +5,7 @@
 import { relations } from "drizzle-orm";
 import {
   accessGrant,
+  aclEntry,
   activity,
   attachment,
   channel,
@@ -12,6 +13,7 @@ import {
   comment,
   doc,
   docFolder,
+  docLink,
   docVersion,
   label,
   message,
@@ -67,6 +69,7 @@ export const memberRelations = relations(member, ({ one }) => ({
 export const teamRelations = relations(team, ({ one, many }) => ({
   organization: one(organization, { fields: [team.organizationId], references: [organization.id] }),
   members: many(teamMember),
+  aclEntries: many(aclEntry, { relationName: "aclTeam" }),
 }));
 
 export const teamMemberRelations = relations(teamMember, ({ one }) => ({
@@ -124,6 +127,7 @@ export const messageRelations = relations(message, ({ one, many }) => ({
 export const attachmentRelations = relations(attachment, ({ one }) => ({
   message: one(message, { fields: [attachment.messageId], references: [message.id] }),
   channel: one(channel, { fields: [attachment.channelId], references: [channel.id] }),
+  doc: one(doc, { fields: [attachment.docId], references: [doc.id] }),
 }));
 
 export const reactionRelations = relations(reaction, ({ one }) => ({
@@ -144,6 +148,7 @@ export const ticketRelations = relations(ticket, ({ one, many }) => ({
   sources: many(ticketSource),
   comments: many(comment),
   activities: many(activity),
+  docLinks: many(docLink),
 }));
 
 export const ticketAliasRelations = relations(ticketAlias, ({ one }) => ({
@@ -179,6 +184,8 @@ export const notificationRelations = relations(notification, ({ one }) => ({
   ticket: one(ticket, { fields: [notification.ticketId], references: [ticket.id] }),
   message: one(message, { fields: [notification.messageId], references: [message.id] }),
   channel: one(channel, { fields: [notification.channelId], references: [channel.id] }),
+  doc: one(doc, { fields: [notification.docId], references: [doc.id] }),
+  folder: one(docFolder, { fields: [notification.folderId], references: [docFolder.id] }),
 }));
 
 export const notificationSettingRelations = relations(notificationSetting, ({ one }) => ({
@@ -188,16 +195,22 @@ export const notificationSettingRelations = relations(notificationSetting, ({ on
 /* -------------------------- Knowledge base -------------------------- */
 
 export const docFolderRelations = relations(docFolder, ({ one, many }) => ({
+  organization: one(organization, { fields: [docFolder.organizationId], references: [organization.id] }),
   parent: one(docFolder, { fields: [docFolder.parentId], references: [docFolder.id], relationName: "folderTree" }),
   children: many(docFolder, { relationName: "folderTree" }),
   docs: many(doc),
   grants: many(accessGrant),
+  aclEntries: many(aclEntry, { relationName: "folderAcl" }),
 }));
 
 export const docRelations = relations(doc, ({ one, many }) => ({
+  organization: one(organization, { fields: [doc.organizationId], references: [organization.id] }),
   folder: one(docFolder, { fields: [doc.folderId], references: [docFolder.id] }),
   versions: many(docVersion),
   grants: many(accessGrant),
+  aclEntries: many(aclEntry, { relationName: "docAcl" }),
+  links: many(docLink),
+  attachments: many(attachment),
 }));
 
 export const docVersionRelations = relations(docVersion, ({ one }) => ({
@@ -206,6 +219,20 @@ export const docVersionRelations = relations(docVersion, ({ one }) => ({
 }));
 
 export const accessGrantRelations = relations(accessGrant, ({ one }) => ({
+  organization: one(organization, { fields: [accessGrant.organizationId], references: [organization.id] }),
   folder: one(docFolder, { fields: [accessGrant.folderId], references: [docFolder.id] }),
   doc: one(doc, { fields: [accessGrant.docId], references: [doc.id] }),
+  team: one(team, { fields: [accessGrant.principalId], references: [team.id], relationName: "grantTeam" }),
+  user: one(user, { fields: [accessGrant.principalId], references: [user.id], relationName: "grantUser" }),
+}));
+
+export const aclEntryRelations = relations(aclEntry, ({ one }) => ({
+  folder: one(docFolder, { fields: [aclEntry.nodeId], references: [docFolder.id], relationName: "folderAcl" }),
+  doc: one(doc, { fields: [aclEntry.nodeId], references: [doc.id], relationName: "docAcl" }),
+  team: one(team, { fields: [aclEntry.principalId], references: [team.id], relationName: "aclTeam" }),
+}));
+
+export const docLinkRelations = relations(docLink, ({ one }) => ({
+  ticket: one(ticket, { fields: [docLink.ticketId], references: [ticket.id] }),
+  doc: one(doc, { fields: [docLink.docId], references: [doc.id] }),
 }));

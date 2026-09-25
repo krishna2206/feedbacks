@@ -1,12 +1,14 @@
 /**
  * Attachments.
  *
- *   POST /api/uploads          multipart: file, [thumb], organizationId, channelId, [width], [height]
+ *   POST /api/uploads          multipart: file, [thumb], organizationId, channelId | docId, [width], [height]
  *   GET  /api/files/:id        the file (authorized), `?download=1` forces a download
  *   GET  /api/files/:id/thumb  the preview of an image (falls back to the file)
  *
- * An upload creates a pending `attachment` row (message_id = null) owned by the uploader;
- * the `messages.send` mutator then attaches it to the message. Previews are generated in the
+ * A chat upload creates a pending `attachment` row (message_id = null) owned by the uploader;
+ * the `messages.send` mutator then attaches it to the message. A document upload (images pasted
+ * in the editor) belongs to the document right away: editing it needs edit access, reading it
+ * read access, and it is deleted with the document. Previews are generated in the
  * browser before upload (canvas → WebP): no native image library on the server.
  */
 import * as s from "@feedbacks/schema/db";
@@ -53,6 +55,15 @@ async function channelAccess(userId: string, channelId: string) {
   return { organizationId: row.organization_id, canRead, canPost };
 }
 
+/** Effective access of a user on a document (0 none · 1 read · 2 edit · 3 manage), trashed documents excluded */
+async function docLevel(userId: string, docId: string) {
+  const { rows } = await pool.query<{ organization_id: string; level: number }>(
+    "select d.organization_id, doc_access_level($2, d.id) as level from doc d where d.id = $1 and d.deleted_at is null",
+    [docId, userId],
+  );
+  return rows[0] ? { organizationId: rows[0].organization_id, level: Number(rows[0].level) } : null;
+}
+
 const safeName = (name: string) =>
   name
     .normalize("NFKC")
@@ -72,12 +83,19 @@ export function mountFiles(app: Hono) {
       const form = await c.req.parseBody();
       const file = form.file;
       const organizationId = String(form.organizationId ?? "");
-      const channelId = String(form.channelId ?? "");
-      if (!(file instanceof File) || !organizationId || !channelId) return c.json({ error: "bad_request" }, 400);
+      const channelId = String(form.channelId ?? "") || null;
+      const docId = String(form.docId ?? "") || null;
+      if (!(file instanceof File) || !organizationId || !(channelId || docId) || (channelId && docId))
+        return c.json({ error: "bad_request" }, 400);
       if (file.size > env.uploadMaxBytes) return c.json({ error: "file_too_large", maxBytes: env.uploadMaxBytes }, 413);
 
-      const access = await channelAccess(user.id, channelId);
-      if (!access || access.organizationId !== organizationId || !access.canPost) return c.json({ error: "forbidden" }, 403);
+      if (channelId) {
+        const access = await channelAccess(user.id, channelId);
+        if (!access || access.organizationId !== organizationId || !access.canPost) return c.json({ error: "forbidden" }, 403);
+      } else {
+        const access = await docLevel(user.id, docId as string);
+        if (!access || access.organizationId !== organizationId || access.level < 2) return c.json({ error: "forbidden" }, 403);
+      }
 
       const id = newId();
       const name = safeName(file.name);
@@ -103,6 +121,7 @@ export function mountFiles(app: Hono) {
         id,
         organizationId,
         channelId,
+        docId,
         messageId: null,
         kind: kind as "image" | "file" | "audio",
         name,
@@ -143,7 +162,8 @@ export function mountFiles(app: Hono) {
     // Same answer for "missing" and "forbidden": ids never leak existence
     if (!a) return c.json({ error: "not_found" }, 404);
     let allowed = false;
-    if (!a.messageId)
+    if (a.docId) allowed = ((await docLevel(user.id, a.docId))?.level ?? 0) >= 1;
+    else if (!a.messageId)
       allowed = a.uploadedBy === user.id; // pending upload: only its uploader
     else if (a.channelId) allowed = !!(await channelAccess(user.id, a.channelId))?.canRead;
     if (!allowed) return c.json({ error: "not_found" }, 404);

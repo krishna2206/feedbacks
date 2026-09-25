@@ -12,6 +12,7 @@ import { dmChannelId, mentionToken } from "@feedbacks/schema/chat";
 import { newId } from "@feedbacks/schema/ids";
 import { mutators, queries, schema } from "@feedbacks/schema/zero";
 import { Zero } from "@rocicorp/zero";
+import { strToU8, zipSync } from "fflate";
 import pg from "pg";
 
 const API = `http://localhost:${process.env.API_PORT}`;
@@ -926,6 +927,487 @@ await ok(zo.mutate(mutators.messages.delete({ organizationId: orgId, id: deploy,
 assert.ok(!(await ids(bob, "deploiement")).includes(`message:${deploy}`), "deleted messages leave the index");
 assert.equal((await searchAs(bob, { q: "" })).status, 400, "empty query refused");
 step("search: prefixes, case/accent-insensitive, highlights, filters; never leaks private channels, DMs, projects or other orgs");
+
+/* ------------------------------------------------------------------ */
+/* M4 — knowledge base: teams, access, versions, trash, import         */
+/* ------------------------------------------------------------------ */
+
+/** Retries until `check` passes (rows written by the API with plain SQL reach zero-cache through replication) */
+async function eventually(check: () => Promise<void>, what: string, timeoutMs = 8000) {
+  const start = Date.now();
+  for (;;) {
+    try {
+      return await check();
+    } catch (e) {
+      if (Date.now() - start > timeoutMs) throw new Error(`${what}: ${(e as Error).message}`);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+}
+const listDocs = (z: Zero, viewAs?: string) => z.run(queries.docs.list({ organizationId: orgId, viewAs }), { type: "complete" });
+const listFolders = (z: Zero, viewAs?: string) => z.run(queries.docs.folders({ organizationId: orgId, viewAs }), { type: "complete" });
+const getDoc = (z: Zero, docId: string) => z.run(queries.docs.get({ organizationId: orgId, docId }), { type: "complete" });
+const has = (rows: readonly { id: string }[], id: string) => rows.some((r) => r.id === id);
+const now = () => Date.now();
+
+// 30. Teams: owners/admins manage them
+const supportTeam = newId();
+await rejected(zb.mutate(mutators.teams.create({ id: newId(), organizationId: orgId, name: "Rogue", at: now() })), "member creates a team");
+await ok(zo.mutate(mutators.teams.create({ id: supportTeam, organizationId: orgId, name: "Support", at: now() })), "owner creates a team");
+await ok(zo.mutate(mutators.teams.addMember({ organizationId: orgId, teamId: supportTeam, userId: carol.userId, at: now() })), "add carol");
+await rejected(
+  zo.mutate(mutators.teams.addMember({ organizationId: orgId, teamId: supportTeam, userId: eve.userId, at: now() })),
+  "outsider",
+);
+const teams = await zc.run(queries.teams.list({ organizationId: orgId }), { type: "complete" });
+assert.deepEqual(
+  teams.find((t) => t.id === supportTeam)?.members.map((m) => m.userId),
+  [carol.userId],
+);
+assert.equal(Number((await db.query("select member_count from team where id = $1", [supportTeam])).rows[0].member_count), 1);
+step("teams: owners manage them, members of the organization only");
+
+// 31. Tree: root items inherit the organization default (every member edits)
+const handbook = newId();
+const onboarding = newId();
+const onboardingV1 = "# Onboarding\n\nWelcome aboard: read the **handbook** first.";
+await ok(
+  zb.mutate(mutators.folders.create({ id: handbook, organizationId: orgId, parentId: null, name: "Handbook", sortOrder: 1, at: now() })),
+  "bob creates a root folder",
+);
+await ok(
+  zb.mutate(
+    mutators.docs.create({
+      id: onboarding,
+      organizationId: orgId,
+      folderId: handbook,
+      title: "Onboarding",
+      content: onboardingV1,
+      sortOrder: 1,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "bob creates a document",
+);
+const carolOnboarding = await getDoc(zc, onboarding);
+assert.equal(carolOnboarding?.versions[0]?.content, onboardingV1, "readers get the body from the current version");
+assert.ok(
+  carolOnboarding?.aclEntries.some((e) => e.principalType === "org" && e.level === "edit"),
+  "inherited org default",
+);
+assert.equal(
+  (await db.query("select content from doc where id = $1", [onboarding])).rows[0].content,
+  onboardingV1,
+  "body stored server-side",
+);
+
+// Restricted folder: stops inheriting, org grant removed → admins only
+const finance = newId();
+const salaries = newId();
+const salariesBody = "Salary grid 2026: quokka bands and zeppelin bonuses";
+await ok(
+  zo.mutate(mutators.folders.create({ id: finance, organizationId: orgId, parentId: null, name: "Finance", sortOrder: 2, at: now() })),
+  "finance",
+);
+await ok(zo.mutate(mutators.access.setInherit({ organizationId: orgId, nodeId: finance, inherit: false, at: now() })), "restrict");
+await eventually(async () => {
+  assert.ok(has(await listFolders(zb), finance), "restricting alone keeps current access (inherited entries copied)");
+}, "converges");
+await ok(zo.mutate(mutators.access.revoke({ organizationId: orgId, grantId: `${finance}:org:org` })), "revoke org access");
+await ok(
+  zo.mutate(
+    mutators.docs.create({
+      id: salaries,
+      organizationId: orgId,
+      folderId: finance,
+      title: "Salaries",
+      content: salariesBody,
+      sortOrder: 1,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "salaries",
+);
+await eventually(async () => {
+  assert.ok(!has(await listFolders(zb), finance), "bob doesn't see the restricted folder");
+}, "converges");
+await eventually(async () => {
+  assert.ok(!has(await listDocs(zb), salaries), "…nor its documents");
+}, "converges");
+assert.equal(await getDoc(zb, salaries), undefined, "…nor their content");
+assert.equal(
+  (await zb.run(queries.docs.history({ organizationId: orgId, docId: salaries }), { type: "complete" })).length,
+  0,
+  "…nor their versions",
+);
+assert.ok(has(await listDocs(zo), salaries), "admins read everything");
+await rejected(
+  zb.mutate(
+    mutators.docs.create({
+      id: newId(),
+      organizationId: orgId,
+      folderId: finance,
+      title: "Sneaky",
+      content: "",
+      sortOrder: 9,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "bob can't write into it",
+);
+step("tree: root items inherit the org default; a restricted folder hides itself and its documents (content, versions)");
+
+// 32. View as (admins only, read-only preview)
+assert.ok(!has(await listDocs(zo, bob.userId), salaries), "owner previewing bob's access doesn't see Salaries");
+assert.ok(has(await listDocs(zo, bob.userId), onboarding), "…but sees what bob sees");
+assert.equal((await listDocs(zb, owner.userId)).length, 0, "a member can't use view-as");
+step("view as: admins preview a member's access; nobody else can");
+
+// 33. Teams as principals, levels read / edit / manage
+await ok(
+  zo.mutate(
+    mutators.access.grant({
+      organizationId: orgId,
+      nodeId: finance,
+      principalType: "team",
+      principalId: supportTeam,
+      level: "read",
+      at: now(),
+    }),
+  ),
+  "support team reads Finance",
+);
+await eventually(async () => {
+  assert.ok(has(await listDocs(zc), salaries), "carol (support team) reads Salaries through the folder");
+}, "converges");
+assert.ok(!has(await listDocs(zb), salaries), "bob still doesn't");
+const salV1 = (await getDoc(zc, salaries))?.version ?? 1;
+await rejected(
+  zc.mutate(
+    mutators.docs.save({
+      organizationId: orgId,
+      docId: salaries,
+      title: "Salaries",
+      content: "hacked",
+      baseVersion: salV1,
+      force: false,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "read level can't edit",
+);
+await ok(
+  zo.mutate(
+    mutators.access.grant({
+      organizationId: orgId,
+      nodeId: salaries,
+      principalType: "user",
+      principalId: carol.userId,
+      level: "edit",
+      at: now(),
+    }),
+  ),
+  "carol edits Salaries (additive document grant)",
+);
+await ok(
+  zc.mutate(
+    mutators.docs.save({
+      organizationId: orgId,
+      docId: salaries,
+      title: "Salaries",
+      content: `${salariesBody}\n\nUpdated by Carol.`,
+      baseVersion: salV1,
+      force: false,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "edit level saves",
+);
+await rejected(
+  zc.mutate(
+    mutators.access.grant({
+      organizationId: orgId,
+      nodeId: salaries,
+      principalType: "user",
+      principalId: bob.userId,
+      level: "read",
+      at: now(),
+    }),
+  ),
+  "edit level can't share",
+);
+step("teams as principals; read can't edit, edit can't share, grants add to what is inherited");
+
+// 34. Document attachments follow the document's access
+const docUpload = (who: Session, docId: string) => {
+  const form = new FormData();
+  form.set("file", new File([PNG], "chart.png", { type: "image/png" }));
+  form.set("organizationId", orgId);
+  form.set("docId", docId);
+  return fetch(`${API}/api/uploads`, { method: "POST", headers: bearer(who), body: form });
+};
+const docImg = await docUpload(carol, salaries);
+assert.equal(docImg.status, 200, await docImg.clone().text());
+const docImgId = ((await docImg.json()) as { id: string }).id;
+assert.equal((await docUpload(bob, salaries)).status, 403, "no upload without edit access");
+const readImg = (who: Session) => fetch(`${API}/api/files/${docImgId}`, { headers: bearer(who) });
+assert.equal((await readImg(carol)).status, 200, "readers of the document read its images");
+assert.equal((await readImg(bob)).status, 404, "others don't");
+step("attachments: document images need edit to upload, read to download");
+
+// 35. Restricted landing + request access → notification → one-click grant
+const nodeInfo = async (who: Session, nodeId: string) =>
+  // biome-ignore lint/suspicious/noExplicitAny: loose JSON in a test
+  (await (await fetch(`${API}/api/docs/node/${nodeId}?organizationId=${orgId}`, { headers: bearer(who) })).json()) as any;
+const bobInfo = await nodeInfo(bob, salaries);
+assert.deepEqual([bobInfo.kind, bobInfo.level, bobInfo.title], ["doc", 0, null], "restricted: kind only, no title");
+assert.equal(
+  (await fetch(`${API}/api/docs/node/${salaries}?organizationId=${orgId}`, { headers: bearer(eve) })).status,
+  404,
+  "other org: nothing",
+);
+const requestId = newId();
+await ok(
+  zb.mutate(mutators.access.request({ organizationId: orgId, nodeId: salaries, level: "read", eventId: requestId, at: now() })),
+  "request",
+);
+const req = (await db.query("select id, user_id, body from notification where kind = 'access_request' and doc_id = $1", [salaries])).rows;
+assert.ok(
+  req.some((r) => r.user_id === owner.userId && r.body === "read"),
+  "managers are notified",
+);
+assert.ok(!req.some((r) => r.user_id === carol.userId), "editors aren't managers");
+await rejected(
+  zc.mutate(mutators.access.grantRequest({ organizationId: orgId, notificationId: req[0].id, level: "read", at: now() })),
+  "someone else's request",
+);
+await ok(
+  zo.mutate(
+    mutators.access.grantRequest({
+      organizationId: orgId,
+      notificationId: `${requestId}:access_request:${owner.userId}`,
+      level: "read",
+      at: now(),
+    }),
+  ),
+  "owner grants from the notification",
+);
+await eventually(async () => {
+  assert.ok((await getDoc(zb, salaries))?.versions[0]?.content.includes("Updated by Carol"), "bob now reads Salaries");
+}, "converges");
+step("request access: managers notified, one-click grant from the notification");
+
+// 36. Versions and conflicts
+const base = (await getDoc(zb, onboarding))?.version ?? 1;
+await ok(
+  zb.mutate(
+    mutators.docs.save({
+      organizationId: orgId,
+      docId: onboarding,
+      title: "Onboarding",
+      content: `${onboardingV1}\n\nDay 1: laptop.`,
+      baseVersion: base,
+      force: false,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "bob saves v2",
+);
+const conflict = await errorOf(
+  zc.mutate(
+    mutators.docs.save({
+      organizationId: orgId,
+      docId: onboarding,
+      title: "Onboarding",
+      content: "Carol's stale edit",
+      baseVersion: base,
+      force: false,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+);
+assert.notEqual(conflict.type, "success");
+assert.ok(conflict.error?.message?.includes("DOC_CONFLICT"), `conflict detected: ${JSON.stringify(conflict)}`);
+await ok(
+  zc.mutate(
+    mutators.docs.save({
+      organizationId: orgId,
+      docId: onboarding,
+      title: "Onboarding",
+      content: "Carol overwrites",
+      baseVersion: base,
+      force: true,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "explicit overwrite",
+);
+const history = await zb.run(queries.docs.history({ organizationId: orgId, docId: onboarding }), { type: "complete" });
+assert.deepEqual(
+  history.map((v) => v.number),
+  [3, 2, 1],
+  "every save is a version",
+);
+await ok(
+  zb.mutate(
+    mutators.docs.restoreVersion({
+      organizationId: orgId,
+      docId: onboarding,
+      fromVersionId: history[2].id,
+      baseVersion: 3,
+      versionId: newId(),
+      at: now(),
+    }),
+  ),
+  "restore v1",
+);
+await eventually(async () => {
+  assert.equal((await getDoc(zb, onboarding))?.versions[0]?.content, onboardingV1, "restoring saves the old content as v4");
+}, "converges");
+assert.equal((await db.query("select version, content from doc where id = $1", [onboarding])).rows[0].version, 4);
+step("versions: every save is kept, stale saves are refused (DOC_CONFLICT) unless forced, restore creates a new version");
+
+// 37. Moving changes inheritance
+await rejected(
+  zb.mutate(mutators.docs.move({ organizationId: orgId, docId: onboarding, folderId: finance, sortOrder: 5, at: now() })),
+  "no edit on Finance",
+);
+await ok(
+  zo.mutate(mutators.docs.move({ organizationId: orgId, docId: onboarding, folderId: finance, sortOrder: 5, at: now() })),
+  "owner moves it",
+);
+await eventually(async () => {
+  assert.ok(!has(await listDocs(zb), onboarding), "inside Finance, bob loses it");
+}, "converges");
+await eventually(async () => {
+  assert.ok(has(await listDocs(zc), onboarding), "the support team gains it");
+}, "converges");
+await ok(zo.mutate(mutators.docs.move({ organizationId: orgId, docId: onboarding, folderId: handbook, sortOrder: 1, at: now() })), "back");
+await eventually(async () => {
+  assert.ok(has(await listDocs(zb), onboarding), "back in Handbook, bob reads it again");
+}, "converges");
+await rejected(
+  zo.mutate(mutators.folders.move({ organizationId: orgId, folderId: handbook, parentId: handbook, sortOrder: 1, at: now() })),
+  "no cycles",
+);
+step("move: access follows the new parent; folders can't be moved inside themselves");
+
+// 38. Trash: delete, restore, purge (admins), search follows
+const searchDocIds = async (x: Session, q: string) => (await ids(x, q, { types: "doc" })).filter((i) => i.startsWith("doc:"));
+assert.ok((await searchDocIds(bob, "welcome aboard")).includes(`doc:${onboarding}`), "documents are searchable");
+await ok(zb.mutate(mutators.trash.delete({ organizationId: orgId, nodeId: handbook, at: now() })), "bob trashes Handbook");
+await eventually(async () => {
+  assert.ok(!has(await listDocs(zb), onboarding), "its documents leave the tree");
+}, "converges");
+await eventually(async () => {
+  const trash = await zb.run(queries.docs.trashFolders({ organizationId: orgId }), { type: "complete" });
+  assert.ok(has(trash, handbook), "the folder is in the trash");
+}, "trash");
+assert.equal((await db.query("select trash_root_id from doc where id = $1", [onboarding])).rows[0].trash_root_id, handbook);
+assert.ok(!(await searchDocIds(bob, "welcome aboard")).length, "trashed documents leave search");
+await ok(zb.mutate(mutators.trash.restore({ organizationId: orgId, nodeId: handbook, at: now() })), "restore");
+await eventually(async () => {
+  assert.ok(has(await listDocs(zb), onboarding), "restored with its content");
+}, "converges");
+await ok(zb.mutate(mutators.trash.delete({ organizationId: orgId, nodeId: handbook, at: now() })), "trash again");
+await rejected(zb.mutate(mutators.trash.purge({ organizationId: orgId, nodeId: handbook })), "members can't purge");
+await ok(zo.mutate(mutators.trash.purge({ organizationId: orgId, nodeId: handbook })), "owner purges");
+assert.equal((await db.query("select count(*)::int as n from doc where id = $1", [onboarding])).rows[0].n, 0, "gone for good");
+step("trash: subtree deleted and restored together, out of search, purge for owners/admins only");
+
+// 39. Search never leaks documents
+assert.ok((await searchDocIds(owner, "zeppelin")).includes(`doc:${salaries}`), "admins find restricted documents");
+assert.ok((await searchDocIds(bob, "zeppelin")).includes(`doc:${salaries}`), "bob finds it since he was granted read");
+await ok(zo.mutate(mutators.access.revoke({ organizationId: orgId, grantId: `${salaries}:user:${bob.userId}` })), "revoke bob");
+assert.ok(!(await searchDocIds(bob, "zeppelin")).length, "revoked: no search result");
+assert.ok(!(await searchDocIds(dave, "zeppelin")).length, "never granted: nothing");
+step("search: documents only for people who can read them");
+
+// 40. Links between documents and tickets
+await rejected(
+  zd.mutate(mutators.docLinks.link({ organizationId: orgId, ticketId: pgId, docId: salaries, at: now() })),
+  "viewer can't link",
+);
+await ok(zo.mutate(mutators.docLinks.link({ organizationId: orgId, ticketId: pgId, docId: salaries, at: now() })), "owner links Salaries");
+await eventually(async () => {
+  const ownerTicket = await zo.run(queries.tickets.get({ organizationId: orgId, ticketId: pgId }), { type: "complete" });
+  assert.ok(
+    ownerTicket?.docLinks.some((l) => l.docId === salaries),
+    "owner sees the related document",
+  );
+}, "converges");
+const bobTicket = await zb.run(queries.tickets.get({ organizationId: orgId, ticketId: pgId }), { type: "complete" });
+assert.ok(!bobTicket?.docLinks.some((l) => l.docId === salaries), "bob doesn't see a related document he can't read");
+const referenced = await getDoc(zo, salaries);
+assert.ok(
+  referenced?.links.some((l) => l.ticketId === pgId),
+  "the document lists the tickets referencing it",
+);
+step("links: documents ↔ tickets, filtered by both sides' permissions");
+
+// 41. Import: dry run, then for real
+const zipped = zipSync({
+  "Guides/Deploy.md": strToU8("# Deploy runbook\n\nRun the blue-green switch."),
+  "Guides/Recovery/Rollback.md": strToU8("Rollback steps: pelican procedure.\n\n![shot](./shot.png)"),
+  "Guides/shot.png": PNG,
+  "__MACOSX/Guides/._Deploy.md": strToU8("junk"),
+});
+const importAs = (who: Session, dryRun: boolean, folderId?: string) => {
+  const form = new FormData();
+  form.set("file", new File([zipped], "guides.zip", { type: "application/zip" }));
+  form.set("organizationId", orgId);
+  if (folderId) form.set("folderId", folderId);
+  if (dryRun) form.set("dryRun", "1");
+  return fetch(`${API}/api/docs/import`, { method: "POST", headers: bearer(who), body: form });
+};
+assert.equal((await importAs(bob, false, finance)).status, 403, "no import into a folder you can't edit");
+const dryImport = await importAs(bob, true);
+assert.equal(dryImport.status, 200, await dryImport.clone().text());
+// biome-ignore lint/suspicious/noExplicitAny: loose JSON in a test
+const dryReport = (await dryImport.json()) as any;
+assert.deepEqual(dryReport.docs.map((d: { title: string }) => d.title).sort(), ["Deploy runbook", "Rollback"]);
+assert.equal(dryReport.folders.created, 2);
+assert.ok(
+  dryReport.warnings.some((w: { path: string }) => w.path === "Guides/shot.png"),
+  "non-markdown files reported",
+);
+assert.ok(
+  dryReport.warnings.some((w: { message: string }) => w.message.includes("relative")),
+  "relative images reported",
+);
+assert.equal((await db.query("select count(*)::int as n from doc where title = 'Deploy runbook'")).rows[0].n, 0, "dry run writes nothing");
+const real = await importAs(bob, false);
+assert.equal(real.status, 200, await real.clone().text());
+const imported = (await db.query("select id, folder_id, version from doc where source like 'import:Guides/%' order by title")).rows;
+assert.equal(imported.length, 2);
+await eventually(async () => {
+  const docs = await listDocs(zc);
+  assert.ok(
+    imported.every((d) => has(docs, d.id)),
+    "imported documents synced with inherited access",
+  );
+}, "import sync");
+assert.ok((await searchDocIds(carol, "pelican")).length === 1, "imported documents are searchable");
+const importedBody = await getDoc(zc, imported[0].id);
+assert.equal(importedBody?.versions[0]?.number, 1, "imported documents start at version 1");
+step("import: zip of markdown → folders + documents, dry run, report (skipped files, relative images), access checked");
+
+// 42. Other organization: nothing
+assert.equal((await listDocs(ze)).length, 0, "eve sees no document of Acme");
+assert.equal((await listFolders(ze)).length, 0, "…nor folders");
+await rejected(
+  ze.mutate(mutators.folders.create({ id: newId(), organizationId: orgId, parentId: null, name: "Evil", sortOrder: 1, at: now() })),
+  "eve can't write",
+);
+step("isolation: another organization sees and writes nothing");
 
 await zd.close();
 await Promise.all([zb.close(), zo.close(), ze.close(), zc.close()]);

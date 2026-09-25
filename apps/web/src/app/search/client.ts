@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 /** One result of `GET /api/search` (see apps/api/src/routes/search.ts) */
 export type SearchResult = {
   id: string;
-  kind: "message" | "ticket" | "comment";
+  kind: "message" | "ticket" | "comment" | "doc";
   entityId: string;
   createdAt: number;
   /** Excerpt with \uE000…\uE001 around matches (render with <Highlighted>) */
@@ -12,6 +12,7 @@ export type SearchResult = {
   title: string;
   author: { id: string; name: string } | null;
   channel: { id: string; name: string; kind: string } | null;
+  doc?: { id: string; title: string; folderId: string | null } | null;
   parentId: string | null;
   ticket: { id: string; key: string; title: string; status: string } | null;
   project: { id: string; key: string; name: string; color: string } | null;

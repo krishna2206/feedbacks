@@ -2,12 +2,14 @@
  * Demo data for a FRESH instance (refuses to run if users exist):
  *   pnpm db:seed   → owner demo@example.com / demo-password, organization "Demo" with channels, a private
  *   channel, a DM, a thread, reactions, mentions and an image attachment, plus 3 projects (one private),
- *   labels and ~15 tickets, some built from chat messages (others stay "unprocessed" on purpose).
+ *   labels and ~15 tickets, some built from chat messages (others stay "unprocessed" on purpose), and a
+ *   knowledge base: two teams, open and restricted folders, documents with a version history.
  */
 
 import { crc32, deflateSync } from "node:zlib";
 import { dmChannelId, excerpt, mentionedUserIds, mentionToken } from "@feedbacks/schema/chat";
 import * as s from "@feedbacks/schema/db";
+import { aclId, docMentionToken } from "@feedbacks/schema/docs";
 import { newId } from "@feedbacks/schema/ids";
 import { and, eq, sql } from "drizzle-orm";
 import { auth, instanceHasUsers } from "../src/auth";
@@ -493,6 +495,238 @@ await db.insert(s.notification).values({
   ticketId: exportTicket,
   body: "APP-1 Export button does nothing on Safari iOS",
 });
+
+/* ---------- Knowledge base: teams, folders, documents, access ---------- */
+
+const supportTeam = newId();
+const engineeringTeam = newId();
+await db.insert(s.team).values([
+  { id: supportTeam, name: "Support", organizationId: org.id, memberCount: 1, createdAt: new Date(now - 20 * day) },
+  { id: engineeringTeam, name: "Engineering", organizationId: org.id, memberCount: 1, createdAt: new Date(now - 20 * day) },
+]);
+await db.insert(s.teamMember).values([
+  { id: `${supportTeam}:${alex.id}`, teamId: supportTeam, userId: alex.id, createdAt: new Date() },
+  { id: `${engineeringTeam}:${sam.id}`, teamId: engineeringTeam, userId: sam.id, createdAt: new Date() },
+]);
+
+async function folder(name: string, parentId: string | null, sortOrder: number, restricted = false) {
+  const id = newId();
+  await db.insert(s.docFolder).values({
+    id,
+    organizationId: org.id,
+    parentId,
+    name,
+    inheritGrants: !restricted,
+    sortOrder,
+    createdBy: ownerU.id,
+    createdAt: new Date(now - 15 * day),
+    updatedAt: new Date(now - 15 * day),
+  });
+  return id;
+}
+async function grant(
+  nodeId: string,
+  kind: "folder" | "doc",
+  principalType: "org" | "team" | "user",
+  principalId: string | null,
+  level: "read" | "edit" | "manage",
+) {
+  await db.insert(s.accessGrant).values({
+    id: aclId(nodeId, principalType, principalId),
+    organizationId: org.id,
+    nodeId,
+    folderId: kind === "folder" ? nodeId : null,
+    docId: kind === "doc" ? nodeId : null,
+    principalType,
+    principalId,
+    level,
+    createdBy: ownerU.id,
+  });
+}
+/** A document with its versions (oldest first); the last one is the current content */
+async function document(
+  folderId: string | null,
+  title: string,
+  versions: { by: string; content: string; daysAgo: number }[],
+  sortOrder: number,
+) {
+  const id = newId();
+  const last = versions[versions.length - 1] as (typeof versions)[number];
+  await db.insert(s.doc).values({
+    id,
+    organizationId: org.id,
+    folderId,
+    title,
+    content: last.content,
+    version: versions.length,
+    sortOrder,
+    createdBy: (versions[0] as (typeof versions)[number]).by,
+    createdAt: new Date(now - (versions[0] as (typeof versions)[number]).daysAgo * day),
+    updatedBy: last.by,
+    updatedAt: new Date(now - last.daysAgo * day),
+  });
+  await db.insert(s.docVersion).values(
+    versions.map((v, i) => ({
+      id: newId(),
+      organizationId: org.id,
+      docId: id,
+      number: i + 1,
+      title,
+      content: v.content,
+      authorId: v.by,
+      createdAt: new Date(now - v.daysAgo * day),
+    })),
+  );
+  return id;
+}
+
+// Handbook: at the root, so every member can read and edit it (organization default)
+const handbook = await folder("Handbook", null, 1);
+await document(
+  handbook,
+  "Welcome",
+  [
+    {
+      by: ownerU.id,
+      daysAgo: 14,
+      content: `# Welcome to Demo
+
+This handbook is where we write down **how we work**. Everyone can edit it: fix what's outdated.
+
+## Where things live
+
+| What | Where |
+| --- | --- |
+| Customer feedback | #feedback |
+| Bugs | #bugs, then tickets |
+| Processes | this knowledge base |
+
+## First week
+
+- [x] Get your accounts
+- [ ] Read the support processes
+- [ ] Ship something small`,
+    },
+  ],
+  1,
+);
+const onboarding = await document(
+  handbook,
+  "Onboarding checklist",
+  [
+    { by: ownerU.id, daysAgo: 12, content: "# Onboarding checklist\n\n1. Laptop and accounts\n2. Meet the team" },
+    {
+      by: alex.id,
+      daysAgo: 3,
+      content:
+        "# Onboarding checklist\n\n1. Laptop and accounts\n2. Meet the team\n3. Shadow a support shift\n\n> Ask in #general if something is missing.",
+    },
+  ],
+  2,
+);
+
+// Support processes: open to everyone, the Support team manages them
+const supportFolder = await folder("Support", null, 2);
+await grant(supportFolder, "folder", "team", supportTeam, "manage");
+const refunds = await document(
+  supportFolder,
+  "Refund process",
+  [
+    {
+      by: alex.id,
+      daysAgo: 8,
+      content: `# Refund process
+
+## When to refund
+
+- The customer was charged twice
+- The order never shipped
+
+## Steps
+
+1. Find the order in the admin panel
+2. Check the payment status
+3. Refund, then reply to the customer with the template below
+
+\`\`\`
+Hi {name}, your refund of {amount} is on its way (3–5 business days).
+\`\`\``,
+    },
+  ],
+  1,
+);
+await document(
+  supportFolder,
+  "Escalation process",
+  [
+    {
+      by: alex.id,
+      daysAgo: 6,
+      content: "# Escalation process\n\nUrgent bugs go to #bugs with the **urgent** label; a developer answers within an hour.",
+    },
+  ],
+  2,
+);
+
+// Engineering: restricted to the Engineering team (edit) and Support (read)
+const engineering = await folder("Engineering", null, 3, true);
+await grant(engineering, "folder", "team", engineeringTeam, "manage");
+await grant(engineering, "folder", "team", supportTeam, "read");
+const runbook = await document(
+  engineering,
+  "Deployment runbook",
+  [
+    {
+      by: sam.id,
+      daysAgo: 5,
+      content: `# Deployment runbook
+
+## Before
+
+- CI is green
+- Migrations reviewed
+
+## Deploy
+
+\`\`\`bash
+git tag v$(date +%Y.%m.%d) && git push --tags
+\`\`\`
+
+## Rollback
+
+Redeploy the previous tag, then check the error rate for 15 minutes.`,
+    },
+  ],
+  1,
+);
+await document(
+  engineering,
+  "Incident response",
+  [
+    {
+      by: sam.id,
+      daysAgo: 4,
+      content: "# Incident response\n\n1. Acknowledge in #bugs\n2. Mitigate first, investigate after\n3. Write a short post-mortem here",
+    },
+  ],
+  2,
+);
+
+// Leadership: restricted with no grant: owners and admins only
+const leadership = await folder("Leadership", null, 4, true);
+await document(
+  leadership,
+  "Hiring plan",
+  [{ by: ownerU.id, daysAgo: 2, content: "# Hiring plan\n\nConfidential: two engineers next quarter." }],
+  1,
+);
+
+// Links between tickets and documents, and a document mention in chat
+await db.insert(s.docLink).values([
+  { id: `${exportTicket}:${refunds}`, organizationId: org.id, ticketId: exportTicket, docId: refunds, createdBy: sam.id },
+  { id: `${exportTicket}:${runbook}`, organizationId: org.id, ticketId: exportTicket, docId: runbook, createdBy: sam.id },
+]);
+await post(general.id, alex.id, `New teammates: start with ${docMentionToken(onboarding)} 👋`, { minutes: 2 });
 
 console.log(`seed: organization "Demo" ready. Sign in with ${people[0].email} / ${password}`);
 await pool.end();

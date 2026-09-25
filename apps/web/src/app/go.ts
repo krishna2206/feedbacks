@@ -21,12 +21,19 @@ export function useGo() {
       project: (projectKey: string) => navigate({ to: "/$orgSlug/projects/$projectKey", params: { orgSlug, projectKey } }),
       projects: () => navigate({ to: "/$orgSlug/projects", params: { orgSlug } }),
       myTickets: () => navigate({ to: "/$orgSlug/tickets", params: { orgSlug } }),
-      docs: () => navigate({ to: "/$orgSlug/docs", params: { orgSlug } }),
+      docs: (folderId?: string | null) =>
+        folderId
+          ? navigate({ to: "/$orgSlug/docs/f/$folderId", params: { orgSlug, folderId } })
+          : navigate({ to: "/$orgSlug/docs", params: { orgSlug } }),
+      doc: (docId: string, opts: { edit?: boolean; history?: boolean } = {}) =>
+        navigate({ to: "/$orgSlug/docs/d/$docId", params: { orgSlug, docId }, search: opts }),
       search: (q?: string) => navigate({ to: "/$orgSlug/search", params: { orgSlug }, search: q ? { q } : {} }),
-      settings: (page: "notifications" | "members" = "notifications") =>
+      settings: (page: "notifications" | "members" | "teams" = "notifications") =>
         page === "members"
           ? navigate({ to: "/$orgSlug/settings/members", params: { orgSlug } })
-          : navigate({ to: "/$orgSlug/settings/notifications", params: { orgSlug } }),
+          : page === "teams"
+            ? navigate({ to: "/$orgSlug/settings/teams", params: { orgSlug } })
+            : navigate({ to: "/$orgSlug/settings/notifications", params: { orgSlug } }),
     };
   }, [navigate, org.slug]);
 }

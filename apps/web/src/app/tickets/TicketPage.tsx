@@ -26,6 +26,8 @@ import "../chat.css";
 import { encodeMentions } from "../chat/Composer";
 import { EmojiPicker } from "../chat/Reactions";
 import { fileUrl } from "../chat/upload";
+import { encodeDocMentions, useDocIndex } from "../docs/data";
+import { RelatedDocs } from "../docs/RelatedDocs";
 import { useOrg } from "../org-context";
 import { type OrgUser, useOrgMembers } from "../org-data";
 import { ViewHeader } from "../ViewHeader";
@@ -349,6 +351,8 @@ function TicketView({ ticketId }: { ticketId: string }) {
                 </div>
               )}
             </section>
+
+            <RelatedDocs ticketId={ticket.id} links={ticket.docLinks} editable={editable} />
 
             <section className="tk-section">
               <h2 className="tk-section__title">{t("tickets.activity")}</h2>
@@ -838,6 +842,7 @@ function CommentComposer({ ticketId, people }: { ticketId: string; people: reado
   const { t } = useTranslation();
   const zero = useZero();
   const { org } = useOrg();
+  const docIndex = useDocIndex();
   const [body, setBody] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: auto-grow on every content change
@@ -855,7 +860,7 @@ function CommentComposer({ ticketId, people }: { ticketId: string; people: reado
         id: newId(),
         organizationId: org.id,
         ticketId,
-        body: encodeMentions(text, people),
+        body: encodeDocMentions(encodeMentions(text, people), docIndex),
         createdAt: Date.now(),
       }),
     );

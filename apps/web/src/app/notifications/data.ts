@@ -32,6 +32,16 @@ export function useNotificationSettings() {
 
 /** What a notification is about, for display: key or #channel, title, action phrase and excerpt */
 export function describe(n: NotificationRow, t: TFunction, nameOf: (userId: string) => string | undefined) {
+  if (n.kind === "access_request") {
+    // Access requests: the document/folder (readable by managers) and the requested level
+    const level = (n.body ?? "read") as "read" | "edit" | "manage";
+    return {
+      key: null,
+      title: n.doc?.title ?? n.folder?.name ?? t("docs.restrictedMention"),
+      phrase: t("notifications.phrase.access_request_level", { level: t(`docs.levelWord.${level}`) }),
+      excerpt: "",
+    };
+  }
   const key = n.ticket?.project ? ticketKey(n.ticket.project.key, n.ticket.number) : null;
   const where = key ?? (n.channel && n.channel.kind !== "dm" ? `#${n.channel.name}` : null);
   const title = n.ticket?.title ?? (n.channel ? (n.channel.kind === "dm" ? t("notifications.directMessage") : n.channel.name) : "");

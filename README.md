@@ -8,7 +8,7 @@ Most teams collect feedback in group chats: screenshots from support, bug report
 - **Messages → tickets**: select a message and its screenshot, create a ticket pre-filled from them, or link them to an existing ticket. Every ticket keeps its **source messages**, and the people who reported the problem are notified when it moves.
 - **Tickets**: projects with roles (lead, contributor, reporter, viewer) and visibility, list and board views, statuses, priorities, labels, assignees, comments and activity, keyboard-first navigation. Moving a ticket to another project keeps its former key working.
 - **Notifications, ⌘K and search**: a bell for what concerns you (mentions, assignments, status changes, comments on tickets you follow, "your message became a ticket"), never for direct messages: conversations stay in the chat. A command menu to do and find anything from the keyboard, and full-text search across messages, tickets and comments that ignores case and accents and never shows what you can't read.
-- **Knowledge base**: Markdown documents with folder permissions and version history.
+- **Knowledge base**: Markdown documents in folders, with Drive-like sharing (organization, teams or people × read / edit / manage, inherited through folders, restrictable), version history with diffs and restore, conflict detection, trash, a table of contents, links to tickets, `[[document]]` mentions in chat, search, and import from a `.zip` of Markdown files. Owners and admins can preview what a member sees ("view as").
 - **AI-native**: a REST API and an **MCP server**, so agents like Claude Code can read conversations, turn feedback into tickets and pick up work, with exactly the permissions of the person using them.
 - **Fast**: every interaction is instant. Data is synced locally with [Zero](https://zero.rocicorp.dev), so the UI never waits for the network.
 
@@ -80,7 +80,7 @@ Four containers: `postgres` (with `wal_level=logical`), `api`, `zero-cache` and 
 | ✅ M1 | Chat: public/private channels, direct messages, threads, mentions, reactions, attachments (disk or S3), unread counters |
 | ✅ M2 | Tickets: projects and roles, list and board, **messages → ticket**, source messages, comments, activity |
 | ✅ M3 | Notifications (bell, preferences, browser notifications), ⌘K command menu, full-text search, keyboard shortcuts |
-| M4 | Knowledge base: Markdown documents, versions, permissions |
+| ✅ M4 | Knowledge base: teams, folders and Markdown documents, inherited permissions, versions and conflicts, trash, links to tickets, import |
 | M5 | REST API v1, **MCP server**, CLI |
 | M6 | Production deployment guide, mobile app (Expo) |
 

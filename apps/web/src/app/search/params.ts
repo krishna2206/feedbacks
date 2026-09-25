@@ -2,7 +2,7 @@
 
 export type SearchParams = {
   q?: string;
-  type?: "message" | "ticket" | "comment";
+  type?: "message" | "ticket" | "comment" | "doc";
   channel?: string;
   project?: string;
   author?: string;
@@ -13,7 +13,7 @@ export function validateSearchParams(s: Record<string, unknown>): SearchParams {
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
   return {
     q: str(s.q),
-    type: s.type === "message" || s.type === "ticket" || s.type === "comment" ? s.type : undefined,
+    type: s.type === "message" || s.type === "ticket" || s.type === "comment" || s.type === "doc" ? s.type : undefined,
     channel: str(s.channel),
     project: str(s.project),
     author: str(s.author),

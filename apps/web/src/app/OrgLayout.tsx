@@ -2,6 +2,7 @@ import { mutators, schema } from "@feedbacks/schema/zero";
 import { ZeroProvider } from "@rocicorp/zero/react";
 import { Outlet } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { DocIndexProvider } from "./docs/DocIndexProvider";
 import "./layout.css";
 import { NewChannelModal } from "./NewChannelModal";
 import { useNotificationEffects } from "./notifications/effects";
@@ -21,7 +22,9 @@ export function OrgLayout() {
   const { user } = useOrg();
   return (
     <ZeroProvider userID={user.id} context={{ userID: user.id }} cacheURL={`${location.origin}/sync`} schema={schema} mutators={mutators}>
-      <Shell />
+      <DocIndexProvider>
+        <Shell />
+      </DocIndexProvider>
     </ZeroProvider>
   );
 }

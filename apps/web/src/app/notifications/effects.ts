@@ -45,6 +45,8 @@ export function useNotificationEffects() {
         note.close();
         if (n.ticketId) void go.ticket(n.ticket?.project ? `${n.ticket.project.key}-${n.ticket.number}` : n.ticketId);
         else if (n.channelId) void go.channel(n.channelId, n.messageId ?? undefined, n.message?.parentId ?? null);
+        else if (n.docId) void go.doc(n.docId);
+        else if (n.folderId) void go.docs(n.folderId);
       };
     }
   }, [unread, browserEnabled, t, users, go]);

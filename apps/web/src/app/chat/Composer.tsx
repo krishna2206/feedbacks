@@ -5,6 +5,7 @@ import { Avatar, Button, Icon, Tooltip, toast } from "@feedbacks/ui";
 import { useZero } from "@rocicorp/zero/react";
 import { type Ref, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { encodeDocMentions, useDocIndex } from "../docs/data";
 import { useOrg } from "../org-context";
 import type { OrgUser } from "../org-data";
 import { type UploadedAttachment, uploadFile } from "./upload";
@@ -69,6 +70,9 @@ export function Composer({
   const [text, setText] = useState(() => readDraft(key));
   const [pending, setPending] = useState<Pending[]>([]);
   const [mention, setMention] = useState<{ query: string; start: number; index: number } | null>(null);
+  // `[[` → documents the user can read (inserted as [[Title]], stored as <doc:id>)
+  const [docMention, setDocMention] = useState<{ query: string; start: number; index: number } | null>(null);
+  const docIndex = useDocIndex();
   const area = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -128,6 +132,27 @@ export function Composer({
     const before = value.slice(0, caret);
     const m = before.match(/(^|\s)@([^\s@]{0,32})$/);
     setMention(m ? { query: m[2] ?? "", start: caret - (m[2]?.length ?? 0) - 1, index: 0 } : null);
+    const d = before.match(/\[\[([^\]\n]{0,60})$/);
+    setDocMention(d ? { query: d[1] ?? "", start: caret - (d[1]?.length ?? 0) - 2, index: 0 } : null);
+  };
+
+  const docCandidates = useMemo(() => {
+    if (!docMention) return [];
+    const q = norm(docMention.query);
+    return [...docIndex.values()].filter((d) => !q || norm(d.title).includes(q)).slice(0, 8);
+  }, [docMention, docIndex]);
+
+  const insertDoc = (d: { title: string }) => {
+    if (!docMention || !area.current) return;
+    const caret = area.current.selectionStart;
+    const next = `${text.slice(0, docMention.start)}[[${d.title}]] ${text.slice(caret)}`;
+    const pos = docMention.start + d.title.length + 5;
+    setText(next);
+    setDocMention(null);
+    requestAnimationFrame(() => {
+      area.current?.setSelectionRange(pos, pos);
+      area.current?.focus();
+    });
   };
 
   const insertMention = (u: OrgUser) => {
@@ -157,7 +182,7 @@ export function Composer({
         organizationId: org.id,
         channelId,
         parentId: parentId ?? null,
-        body: encodeMentions(text.trim(), people),
+        body: encodeDocMentions(encodeMentions(text.trim(), people), docIndex),
         attachments: ready.map((p) => p.result as UploadedAttachment),
         createdAt: Date.now(),
       }),
@@ -165,11 +190,41 @@ export function Composer({
     setText("");
     setPending([]);
     setMention(null);
+    setDocMention(null);
     requestAnimationFrame(autosize);
   };
 
   return (
     <div className="composer-wrap">
+      {docMention && (
+        <div className="mention-list" data-surface="menu" role="listbox">
+          {docCandidates.length === 0 ? (
+            <div className="menu-empty">{t("docs.mentionEmpty")}</div>
+          ) : (
+            docCandidates.map((d, i) => (
+              <button
+                key={d.id}
+                type="button"
+                role="option"
+                aria-selected={i === docMention.index}
+                className="menu-item"
+                data-focused={i === docMention.index}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  insertDoc(d);
+                }}
+                onMouseMove={() => i !== docMention.index && setDocMention({ ...docMention, index: i })}
+              >
+                <span className="menu-item__icon">
+                  <Icon name="doc" size={14} />
+                </span>
+                <span className="menu-item__label">{d.title}</span>
+              </button>
+            ))
+          )}
+          <div className="mention-list__hint">{t("docs.mentionHint")}</div>
+        </div>
+      )}
       {mention && (
         <div className="mention-list" data-surface="menu" role="listbox">
           {candidates.length === 0 ? (
@@ -234,7 +289,10 @@ export function Composer({
               autosize();
             }}
             onSelect={(e) => detectMention(e.currentTarget.value, e.currentTarget.selectionStart)}
-            onBlur={() => setMention(null)}
+            onBlur={() => {
+              setMention(null);
+              setDocMention(null);
+            }}
             onPaste={(e) => {
               const files = Array.from(e.clipboardData.files);
               if (files.length) {
@@ -243,6 +301,25 @@ export function Composer({
               }
             }}
             onKeyDown={(e) => {
+              if (docMention && docCandidates.length) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const d = e.key === "ArrowDown" ? 1 : -1;
+                  setDocMention({ ...docMention, index: (docMention.index + d + docCandidates.length) % docCandidates.length });
+                  return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  const d = docCandidates[docMention.index];
+                  if (d) insertDoc(d);
+                  return;
+                }
+              }
+              if (e.key === "Escape" && docMention) {
+                e.preventDefault();
+                setDocMention(null);
+                return;
+              }
               if (mention && candidates.length) {
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                   e.preventDefault();

@@ -19,11 +19,11 @@ if (!Number.isFinite(ttlHours) || ttlHours < 0) {
 const r = await sweepUploads({ dryRun, ttlHours });
 if (dryRun) {
   console.log(
-    `dry run: ${r.expiredPending} pending upload(s) older than ${ttlHours}h would be deleted; ${r.queued} file(s) queued for deletion. Nothing was changed.`,
+    `dry run: ${r.expiredPending} pending upload(s) older than ${ttlHours}h and ${r.purgedTrash} trashed document(s)/folder(s) would be deleted; ${r.queued} file(s) queued for deletion. Nothing was changed.`,
   );
 } else {
   console.log(
-    `deleted ${r.expiredPending} expired pending upload(s) and ${r.deletedFiles} file(s); ${r.failedFiles} deletion(s) failed and ${r.queued} remain queued for retry.`,
+    `deleted ${r.expiredPending} expired pending upload(s), ${r.purgedTrash} trashed document(s)/folder(s) and ${r.deletedFiles} file(s); ${r.failedFiles} deletion(s) failed and ${r.queued} remain queued for retry.`,
   );
 }
 await pool.end();

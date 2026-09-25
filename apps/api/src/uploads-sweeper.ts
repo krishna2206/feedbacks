@@ -4,8 +4,10 @@
  * `storage_deletion`; this module deletes them from storage.
  *
  *  - `drainDeletions()` runs right after mutations (message deletions are cleaned up in seconds);
- *  - `sweepUploads()` runs at startup and every UPLOAD_SWEEP_INTERVAL_MIN: it expires pending
- *    uploads older than UPLOAD_PENDING_TTL_HOURS, then retries queued deletions that failed.
+ *  - `sweepUploads()` runs at startup and every UPLOAD_SWEEP_INTERVAL_MIN: it purges trashed
+ *    folders/documents older than DOCS_TRASH_DAYS, expires pending uploads older than
+ *    UPLOAD_PENDING_TTL_HOURS (document images are never "pending"), then retries queued
+ *    deletions that failed.
  *
  * Safe with several API instances: rows are claimed with `FOR UPDATE SKIP LOCKED`, so two
  * sweepers never process the same row, and every step is idempotent (deleting a missing file
@@ -20,7 +22,15 @@ import { storage } from "./storage";
 const BATCH = 100;
 const MAX_BATCHES = 50;
 
-export type SweepReport = { expiredPending: number; deletedFiles: number; failedFiles: number; queued: number; dryRun: boolean };
+export type SweepReport = {
+  expiredPending: number;
+  /** Trashed folders/documents deleted for good (older than DOCS_TRASH_DAYS) */
+  purgedTrash: number;
+  deletedFiles: number;
+  failedFiles: number;
+  queued: number;
+  dryRun: boolean;
+};
 
 /** Deletes up to MAX_BATCHES × BATCH queued files that are due */
 async function processQueue(): Promise<{ deleted: number; failed: number }> {
@@ -78,7 +88,7 @@ async function expirePending(ttlHours: number): Promise<number> {
     const { rowCount } = await pool.query(
       `delete from attachment where id in (
          select id from attachment
-          where message_id is null and created_at < $1
+          where message_id is null and doc_id is null and created_at < $1
           order by created_at, id
           limit $2
           for update skip locked)`,
@@ -90,19 +100,42 @@ async function expirePending(ttlHours: number): Promise<number> {
   return expired;
 }
 
+/** Deletes trashed folders and documents older than the retention (attachments' files follow via the trigger) */
+async function purgeTrash(days: number, dryRun: boolean): Promise<number> {
+  const before = new Date(Date.now() - days * 86_400_000);
+  if (dryRun) {
+    const r = await pool.query<{ n: number }>(
+      "select (select count(*) from doc where deleted_at < $1) + (select count(*) from doc_folder where deleted_at < $1) as n",
+      [before],
+    );
+    return Number(r.rows[0]?.n ?? 0);
+  }
+  const docs = await pool.query("delete from doc where deleted_at < $1", [before]);
+  const folders = await pool.query("delete from doc_folder where deleted_at < $1", [before]);
+  return (docs.rowCount ?? 0) + (folders.rowCount ?? 0);
+}
+
 export async function sweepUploads({ dryRun = false, ttlHours = env.uploadPendingTtlHours } = {}): Promise<SweepReport> {
+  const purgedTrash = env.docsTrashDays > 0 ? await purgeTrash(env.docsTrashDays, dryRun) : 0;
   if (dryRun) {
     const pending = await pool.query<{ n: number }>(
-      "select count(*)::int as n from attachment where message_id is null and created_at < $1",
+      "select count(*)::int as n from attachment where message_id is null and doc_id is null and created_at < $1",
       [cutoff(ttlHours)],
     );
     const queued = await pool.query<{ n: number }>("select count(*)::int as n from storage_deletion");
-    return { expiredPending: pending.rows[0]?.n ?? 0, deletedFiles: 0, failedFiles: 0, queued: queued.rows[0]?.n ?? 0, dryRun };
+    return {
+      expiredPending: pending.rows[0]?.n ?? 0,
+      purgedTrash,
+      deletedFiles: 0,
+      failedFiles: 0,
+      queued: queued.rows[0]?.n ?? 0,
+      dryRun,
+    };
   }
   const expiredPending = await expirePending(ttlHours);
   const { deleted, failed } = await processQueue();
   const queued = await pool.query<{ n: number }>("select count(*)::int as n from storage_deletion");
-  return { expiredPending, deletedFiles: deleted, failedFiles: failed, queued: queued.rows[0]?.n ?? 0, dryRun };
+  return { expiredPending, purgedTrash, deletedFiles: deleted, failedFiles: failed, queued: queued.rows[0]?.n ?? 0, dryRun };
 }
 
 /* In-process scheduling ------------------------------------------------------------------ */
@@ -131,8 +164,10 @@ export function startUploadSweeper() {
   const run = () =>
     sweepUploads()
       .then((r) => {
-        if (r.expiredPending || r.deletedFiles || r.failedFiles)
-          console.log(`[uploads] sweep: ${r.expiredPending} expired uploads, ${r.deletedFiles} files deleted, ${r.failedFiles} failed`);
+        if (r.expiredPending || r.purgedTrash || r.deletedFiles || r.failedFiles)
+          console.log(
+            `[uploads] sweep: ${r.expiredPending} expired uploads, ${r.purgedTrash} trashed documents/folders purged, ${r.deletedFiles} files deleted, ${r.failedFiles} failed`,
+          );
       })
       .catch((e) => console.warn(`[uploads] sweep failed: ${(e as Error).message}`));
   // 0 disables the in-process sweeper entirely (startup run included): sweep with the CLI instead

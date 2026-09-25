@@ -93,6 +93,8 @@ function NotificationPanel({ unreadCount, onClose }: { unreadCount: number; onCl
                 onClose();
                 if (n.ticketId) void go.ticket(n.ticket?.project ? `${n.ticket.project.key}-${n.ticket.number}` : n.ticketId);
                 else if (n.channelId) void go.channel(n.channelId, n.messageId ?? undefined, n.message?.parentId ?? null);
+                else if (n.docId) void go.doc(n.docId);
+                else if (n.folderId) void go.docs(n.folderId);
               }}
             />
           ))
@@ -118,6 +120,7 @@ function NotificationPanel({ unreadCount, onClose }: { unreadCount: number; onCl
 function NotificationItem({ n, onOpen }: { n: NotificationRow; onOpen: () => void }) {
   const { t, i18n } = useTranslation();
   const zero = useZero();
+  const { org } = useOrg();
   const { users } = useOrgMembers();
   const d = describe(n, t, (id) => users.get(id)?.name);
   const setRead = (read: boolean) => zero.mutate(mutators.notifications.setRead({ ids: [n.id], read, at: Date.now() }));
@@ -157,6 +160,26 @@ function NotificationItem({ n, onOpen }: { n: NotificationRow; onOpen: () => voi
       </div>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: stops row activation from the action buttons */}
       <span className="notif-row__actions" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        {n.kind === "access_request" && (n.doc || n.folder) && (
+          <Tooltip content={t("docs.grantRequestHint")} placement="top">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                zero.mutate(
+                  mutators.access.grantRequest({
+                    organizationId: org.id,
+                    notificationId: n.id,
+                    level: (n.body || "read") as "read" | "edit" | "manage",
+                    at: Date.now(),
+                  }),
+                )
+              }
+            >
+              {t("docs.grantRequest")}
+            </Button>
+          </Tooltip>
+        )}
         <Tooltip content={n.readAt ? t("notifications.markUnread") : t("notifications.markRead")} placement="top">
           <Button
             variant="muted"

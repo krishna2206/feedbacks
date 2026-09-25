@@ -42,6 +42,8 @@ export const env = {
   uploadPendingTtlHours: Number(process.env.UPLOAD_PENDING_TTL_HOURS ?? 24),
   /** Sweeper period in minutes (0 disables the in-process sweeper; the CLI still works) */
   uploadSweepIntervalMin: Number(process.env.UPLOAD_SWEEP_INTERVAL_MIN ?? 1440),
+  /** Trashed folders and documents are deleted for good after this many days (by the same sweeper) */
+  docsTrashDays: Number(process.env.DOCS_TRASH_DAYS ?? 30),
 };
 
 export const isDev = env.nodeEnv !== "production";

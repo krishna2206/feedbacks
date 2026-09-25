@@ -2,6 +2,8 @@ import { defineQueries, defineQuery } from "@rocicorp/zero";
 import { z } from "zod";
 import {
   channelVisibility,
+  docVisibilityFilter,
+  folderVisibilityFilter,
   myOrganizations,
   ticketVisibilityFilter,
   visibleChannels,
@@ -91,6 +93,13 @@ export const queries = defineQueries({
             .related("reactions", (r) => r.orderBy("createdAt", "asc")),
         )
         .related("activities", (a) => a.orderBy("createdAt", "asc"))
+        // Related documents: only those the user can read
+        .related("docLinks", (l) =>
+          l
+            .whereExists("doc", (d) => docVisibilityFilter(d, ctx.userID, args.organizationId).where("deletedAt", "IS", null))
+            .related("doc")
+            .orderBy("createdAt", "asc"),
+        )
         .one(),
     ),
     /** Resolves "APP-12" without needing the project list (works for tickets readable as a source author) */
@@ -153,6 +162,8 @@ export const queries = defineQueries({
             .related("ticket", (t) => ticketVisibilityFilter(t, ctx.userID, args.organizationId).related("project"))
             .related("channel", (c) => channelVisibility(c, ctx.userID, args.organizationId))
             .related("message", (m) => m.whereExists("channel", (c) => channelVisibility(c, ctx.userID, args.organizationId)))
+            .related("doc", (d) => docVisibilityFilter(d, ctx.userID, args.organizationId))
+            .related("folder", (f) => folderVisibilityFilter(f, ctx.userID, args.organizationId))
             .orderBy("createdAt", "desc")
             .limit(args.limit)
         );
@@ -161,6 +172,108 @@ export const queries = defineQueries({
     /** The user's notification preferences in an organization (undefined = defaults) */
     settings: defineQuery(z.object({ organizationId: id }), ({ ctx, args }) =>
       zql.notificationSetting.where("userId", ctx.userID).where("organizationId", args.organizationId).one(),
+    ),
+  },
+  teams: {
+    /** Teams of the organization with their members (principals of document access, team pickers) */
+    list: defineQuery(z.object({ organizationId: id }), ({ ctx, args }) =>
+      zql.team
+        .where("organizationId", args.organizationId)
+        .whereExists("organization", (o) => o.whereExists("members", (m) => m.where("userId", ctx.userID)))
+        .related("members", (m) => m.orderBy("createdAt", "asc"))
+        .orderBy("name", "asc"),
+    ),
+  },
+  docs: {
+    /**
+     * Knowledge-base tree: readable folders and documents (not trashed), with their resolved ACL entries
+     * (the client derives the user's level from them). Document bodies are not part of the tree.
+     * `viewAs` (owners/admins only) previews what a member can see; for anyone else it returns nothing.
+     */
+    folders: defineQuery(z.object({ organizationId: id, viewAs: id.optional() }), ({ ctx, args }) => {
+      const subject = args.viewAs ?? ctx.userID;
+      const q = folderVisibilityFilter(zql.docFolder, subject, args.organizationId)
+        .where("deletedAt", "IS", null)
+        .related("aclEntries")
+        .orderBy("sortOrder", "asc")
+        .limit(5000);
+      return subject === ctx.userID
+        ? q
+        : q.whereExists("organization", (o) =>
+            o.whereExists("members", (m) => m.where("userId", ctx.userID).where("role", "IN", ["owner", "admin"])),
+          );
+    }),
+    list: defineQuery(z.object({ organizationId: id, viewAs: id.optional() }), ({ ctx, args }) => {
+      const subject = args.viewAs ?? ctx.userID;
+      const q = docVisibilityFilter(zql.doc, subject, args.organizationId)
+        .where("deletedAt", "IS", null)
+        .related("aclEntries")
+        .orderBy("sortOrder", "asc")
+        .limit(10000);
+      return subject === ctx.userID
+        ? q
+        : q.whereExists("organization", (o) =>
+            o.whereExists("members", (m) => m.where("userId", ctx.userID).where("role", "IN", ["owner", "admin"])),
+          );
+    }),
+    /** Document page: the current version (body), linked tickets the user can read */
+    get: defineQuery(z.object({ organizationId: id, docId: id, viewAs: id.optional() }), ({ ctx, args }) => {
+      const subject = args.viewAs ?? ctx.userID;
+      const q = docVisibilityFilter(zql.doc, subject, args.organizationId)
+        .where("id", args.docId)
+        .related("aclEntries")
+        .related("versions", (v) => v.orderBy("number", "desc").limit(1))
+        .related("links", (l) =>
+          l
+            .whereExists("ticket", (t) => ticketVisibilityFilter(t, ctx.userID, args.organizationId))
+            .related("ticket", (t) => t.related("project"))
+            .orderBy("createdAt", "asc"),
+        )
+        .one();
+      return subject === ctx.userID
+        ? q
+        : q.whereExists("organization", (o) =>
+            o.whereExists("members", (m) => m.where("userId", ctx.userID).where("role", "IN", ["owner", "admin"])),
+          );
+    }),
+    /** Version history of a readable document, newest first (bodies included: loaded on demand) */
+    history: defineQuery(z.object({ organizationId: id, docId: id }), ({ ctx, args }) =>
+      zql.docVersion
+        .where("docId", args.docId)
+        .whereExists("doc", (d) => docVisibilityFilter(d, ctx.userID, args.organizationId))
+        .related("author")
+        .orderBy("number", "desc")
+        .limit(200),
+    ),
+    /** Own grants of a node (share dialog): readable nodes only */
+    grants: defineQuery(z.object({ organizationId: id, nodeId: id }), ({ ctx, args }) =>
+      zql.accessGrant
+        .where("organizationId", args.organizationId)
+        .where("nodeId", args.nodeId)
+        .where(({ or, exists }) =>
+          or(
+            exists("folder", (f) => folderVisibilityFilter(f, ctx.userID, args.organizationId)),
+            exists("doc", (d) => docVisibilityFilter(d, ctx.userID, args.organizationId)),
+          ),
+        )
+        .orderBy("createdAt", "asc"),
+    ),
+    /** Trash: items deleted by someone (roots), readable by the user */
+    trashFolders: defineQuery(z.object({ organizationId: id }), ({ ctx, args }) =>
+      folderVisibilityFilter(zql.docFolder, ctx.userID, args.organizationId)
+        .where("deletedAt", "IS NOT", null)
+        .where("trashRootId", "IS", null)
+        .related("aclEntries")
+        .orderBy("deletedAt", "desc")
+        .limit(500),
+    ),
+    trashDocs: defineQuery(z.object({ organizationId: id }), ({ ctx, args }) =>
+      docVisibilityFilter(zql.doc, ctx.userID, args.organizationId)
+        .where("deletedAt", "IS NOT", null)
+        .where("trashRootId", "IS", null)
+        .related("aclEntries")
+        .orderBy("deletedAt", "desc")
+        .limit(500),
     ),
   },
   channels: {

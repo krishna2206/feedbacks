@@ -5,6 +5,7 @@ import { useZero } from "@rocicorp/zero/react";
 import { Link } from "@tanstack/react-router";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { decodeDocMentions, encodeDocMentions, useDocIndex } from "../docs/data";
 import { useOrg } from "../org-context";
 import type { OrgUser } from "../org-data";
 import { statusLabel, TicketStatusIcon } from "../tickets/meta";
@@ -66,6 +67,7 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
   const { t, i18n } = useTranslation();
   const { org, user } = useOrg();
   const zero = useZero();
+  const docIndex = useDocIndex();
   const more = useMenu();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -128,10 +130,17 @@ export const MessageRow = memo(function MessageRow({ message: m, first, users, p
 
         {editing ? (
           <EditBox
-            initial={decodeMentions(m.body, users)}
+            initial={decodeDocMentions(decodeMentions(m.body, users), docIndex)}
             onCancel={() => setEditing(false)}
             onSave={(body) => {
-              zero.mutate(mutators.messages.edit({ organizationId: org.id, id: m.id, body: encodeMentions(body, people), at: Date.now() }));
+              zero.mutate(
+                mutators.messages.edit({
+                  organizationId: org.id,
+                  id: m.id,
+                  body: encodeDocMentions(encodeMentions(body, people), docIndex),
+                  at: Date.now(),
+                }),
+              );
               setEditing(false);
             }}
           />

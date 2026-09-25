@@ -10,7 +10,8 @@
  * Results are filtered with the same rules as the Zero queries (see @feedbacks/schema/zero/permissions):
  * - messages: public channels of the organization, private channels and DMs the user belongs to;
  * - tickets and comments: readable projects (org-visible, member, org admin) or tickets built from
- *   the user's own messages.
+ *   the user's own messages;
+ * - documents: `doc_access_level()` ≥ read (resolved ACL, see migration 0005), trashed ones excluded.
  * Snippets are cut and highlighted here on the ORIGINAL text (ts_headline would only highlight the
  * folded text, losing accents), with private-use markers around matches (rendered as <mark> by the
  * client, never as HTML).
@@ -73,7 +74,7 @@ export function highlight(text: string, terms: readonly string[], max?: number):
   return out;
 }
 
-const SEARCH_KINDS = ["message", "ticket", "comment"] as const;
+const SEARCH_KINDS = ["message", "ticket", "comment", "doc"] as const;
 type SearchKind = (typeof SEARCH_KINDS)[number];
 
 const params = z.object({
@@ -120,6 +121,9 @@ type Row = {
   project_key: string | null;
   project_name: string | null;
   project_color: string | null;
+  doc_id: string | null;
+  doc_title: string | null;
+  doc_folder_id: string | null;
 };
 
 const SQL = `
@@ -128,7 +132,8 @@ const SQL = `
          d.author_id, u.name as author_name,
          c.id as channel_id, c.name as channel_name, c.kind as channel_kind, msg.parent_id,
          t.id as ticket_id, t.number as ticket_number, t.title as ticket_title, t.status as ticket_status,
-         p.id as project_id, p.key as project_key, p.name as project_name, p.color as project_color
+         p.id as project_id, p.key as project_key, p.name as project_name, p.color as project_color,
+         dd.id as doc_id, dd.title as doc_title, dd.folder_id as doc_folder_id
     from search_doc d
    cross join q
     left join channel c on c.id = d.channel_id
@@ -136,6 +141,7 @@ const SQL = `
     left join ticket t on t.id = d.ticket_id
     left join project p on p.id = t.project_id
     left join "user" u on u.id = d.author_id
+    left join doc dd on d.kind = 'doc' and dd.id = d.entity_id
    where d.organization_id = $1
      and d.tsv @@ q.tsq
      and (d.kind <> 'message' or (c.id is not null and (
@@ -147,6 +153,7 @@ const SQL = `
             or exists (select 1 from project_member pm where pm.project_id = p.id and pm.user_id = $3)
             or exists (select 1 from ticket_source ts join message sm on sm.id = ts.message_id
                         where ts.ticket_id = t.id and sm.author_id = $3))))
+     and (d.kind <> 'doc' or (dd.id is not null and dd.deleted_at is null and ($4::boolean or doc_access_level($3, dd.id) >= 1)))
      and ($5::text[] is null or d.kind = any($5::text[]))
      and ($6::text is null or d.channel_id = $6)
      and ($7::text is null or d.project_id = $7)
@@ -196,8 +203,8 @@ async function search(c: Context) {
       createdAt: r.created_at.getTime(),
       /** Body excerpt (messages, comments, ticket description) with highlighted matches */
       snippet: r.body ? highlight(r.body, terms, 180) : "",
-      /** Highlighted ticket title (tickets and comments) */
-      title: r.ticket_title ? highlight(r.ticket_title, terms) : "",
+      /** Highlighted ticket title (tickets and comments) or document title */
+      title: r.doc_title ? highlight(r.doc_title, terms) : r.ticket_title ? highlight(r.ticket_title, terms) : "",
       author: r.author_id ? { id: r.author_id, name: r.author_name ?? "" } : null,
       channel: r.channel_id ? { id: r.channel_id, name: r.channel_name ?? "", kind: r.channel_kind ?? "public" } : null,
       parentId: r.parent_id,
@@ -209,6 +216,7 @@ async function search(c: Context) {
             status: r.ticket_status ?? "todo",
           }
         : null,
+      doc: r.doc_id ? { id: r.doc_id, title: r.doc_title ?? "", folderId: r.doc_folder_id } : null,
       project: r.project_id
         ? { id: r.project_id, key: r.project_key ?? "", name: r.project_name ?? "", color: r.project_color ?? "#888888" }
         : null,

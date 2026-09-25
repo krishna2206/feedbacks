@@ -17,9 +17,9 @@ import type { SearchParams } from "./params";
 import "./search.css";
 
 const DAYS = { "7d": 7, "30d": 30, "365d": 365 } as const;
-const KIND_ICON: Record<SearchResult["kind"], IconName> = { message: "chat", ticket: "ticket", comment: "comment" };
+const KIND_ICON: Record<SearchResult["kind"], IconName> = { message: "chat", ticket: "ticket", comment: "comment", doc: "doc" };
 
-/** Full-text search over messages, tickets and comments, with filters (permission-filtered by the API) */
+/** Full-text search over messages, tickets, comments and documents, with filters (permission-filtered by the API) */
 export function SearchPage() {
   const { t } = useTranslation();
   const { org, user } = useOrg();
@@ -88,7 +88,7 @@ export function SearchPage() {
 
           <div className="search-filters">
             <div className="search-types" role="tablist">
-              {([undefined, "message", "ticket", "comment"] as const).map((k) => (
+              {([undefined, "message", "ticket", "comment", "doc"] as const).map((k) => (
                 <Button
                   key={k ?? "all"}
                   variant="tab"
@@ -135,13 +135,16 @@ function Results({ query, state }: { query: string; state: ReturnType<typeof use
         const open = () => {
           if (r.kind === "message" && r.channel) void go.channel(r.channel.id, r.entityId, r.parentId);
           else if (r.ticket) void go.ticket(r.ticket.key);
+          else if (r.kind === "doc" && r.doc) void go.doc(r.doc.id);
         };
         const where =
           r.kind === "message" && r.channel
             ? r.channel.kind === "dm"
               ? t("notifications.directMessage")
               : `#${r.channel.name}`
-            : r.project?.name;
+            : r.kind === "doc"
+              ? t("nav.docs")
+              : r.project?.name;
         return (
           <button key={r.id} type="button" className="search-row" onClick={open}>
             <span className="search-row__icon">
@@ -160,7 +163,7 @@ function Results({ query, state }: { query: string; state: ReturnType<typeof use
                       {r.author?.name ?? "?"} <span className="search-row__muted">{t("search.in", { where })}</span>
                     </>
                   ) : (
-                    <Highlighted text={r.title || r.ticket?.title || ""} />
+                    <Highlighted text={r.title || r.ticket?.title || r.doc?.title || ""} />
                   )}
                 </span>
               </span>

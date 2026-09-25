@@ -8,6 +8,8 @@
  *  - private channels and direct messages: readable and writable by their members only.
  */
 import type { Query, Transaction } from "@rocicorp/zero";
+import { atLeast, DEFAULT_ROOT_LEVEL, levelFor } from "../docs";
+import type { AccessLevel } from "../enums";
 import type { EffectiveProjectRole } from "../tickets";
 import { type Schema, zql } from "./schema";
 
@@ -164,4 +166,99 @@ export async function isSourceAuthor(tx: Transaction, userID: string, ticketId: 
       .one(),
   );
   return !!src;
+}
+
+/* ------------------------------------------------------------------ */
+/* Knowledge base                                                      */
+/* ------------------------------------------------------------------ */
+/*
+ * A folder or document is readable when the user is an organization owner/admin, or when one of its
+ * resolved ACL entries (see `acl_entry`, maintained by Postgres triggers) matches the user: the whole
+ * organization, one of the user's teams, or the user. Rows of unreadable nodes are never synced: there
+ * is no "locked stub" (a shared link to such a node shows a request-access page served by the API).
+ */
+
+type AclEntryQuery = typeof zql.aclEntry;
+type DocQuery = typeof zql.doc;
+type FolderQuery = typeof zql.docFolder;
+
+/** Entries that apply to `userID` (org-wide, one of their teams, or them) */
+export function aclMatch(q: AclEntryQuery, userID: string): AclEntryQuery {
+  return q.where(({ or, and, cmp, exists }) =>
+    or(
+      cmp("principalType", "org"),
+      and(cmp("principalType", "user"), cmp("principalId", userID)),
+      and(
+        cmp("principalType", "team"),
+        exists("team", (t) => t.whereExists("members", (m) => m.where("userId", userID))),
+      ),
+    ),
+  );
+}
+
+const orgAdminOf = (userID: string) => (o: typeof zql.organization) =>
+  o.whereExists("members", (m) => m.where("userId", userID).where("role", "IN", ["owner", "admin"]));
+
+/** Works on list queries and one-to-one relationships (e.g. `docLink.doc`) */
+// biome-ignore lint/suspicious/noExplicitAny: the result shape (list or single row) is preserved by the cast
+export function docVisibilityFilter<Q extends Query<"doc", Schema, any>>(q: Q, userID: string, organizationId: string): Q {
+  return (q as unknown as DocQuery)
+    .where("organizationId", organizationId)
+    .whereExists("organization", (o) => o.whereExists("members", (m) => m.where("userId", userID)))
+    .where(({ or, exists }) =>
+      or(
+        exists("organization", orgAdminOf(userID)),
+        exists("aclEntries", (e) => aclMatch(e, userID)),
+      ),
+    ) as unknown as Q;
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: see docVisibilityFilter
+export function folderVisibilityFilter<Q extends Query<"docFolder", Schema, any>>(q: Q, userID: string, organizationId: string): Q {
+  return (q as unknown as FolderQuery)
+    .where("organizationId", organizationId)
+    .whereExists("organization", (o) => o.whereExists("members", (m) => m.where("userId", userID)))
+    .where(({ or, exists }) =>
+      or(
+        exists("organization", orgAdminOf(userID)),
+        exists("aclEntries", (e) => aclMatch(e, userID)),
+      ),
+    ) as unknown as Q;
+}
+
+/** Server-side: the node (folder or document) and the user's effective level on it */
+export async function docNodeAccess(tx: Transaction, userID: string, organizationId: string, nodeId: string) {
+  const [folder, doc] = await Promise.all([
+    tx.run(zql.docFolder.where("id", nodeId).where("organizationId", organizationId).one()),
+    tx.run(zql.doc.where("id", nodeId).where("organizationId", organizationId).one()),
+  ]);
+  const node = folder ? ({ kind: "folder", row: folder } as const) : doc ? ({ kind: "doc", row: doc } as const) : null;
+  if (!node) return null;
+  const m = await orgMembership(tx, userID, organizationId);
+  if (!m) return { ...node, level: null };
+  if (isOrgAdmin(m.role)) return { ...node, level: "manage" as AccessLevel };
+  const [entries, teams] = await Promise.all([
+    tx.run(zql.aclEntry.where("nodeId", nodeId)),
+    tx.run(zql.teamMember.where("userId", userID)),
+  ]);
+  return { ...node, level: levelFor(entries, userID, new Set(teams.map((t) => t.teamId)), false) };
+}
+
+/** Level a user gets when creating at the root (the organization default) or inside a folder */
+export async function containerLevel(tx: Transaction, userID: string, organizationId: string, folderId: string | null) {
+  if (!folderId) {
+    const m = await orgMembership(tx, userID, organizationId);
+    if (!m) return null;
+    return isOrgAdmin(m.role) ? ("manage" as AccessLevel) : DEFAULT_ROOT_LEVEL;
+  }
+  const a = await docNodeAccess(tx, userID, organizationId, folderId);
+  if (a?.kind !== "folder" || a.row.deletedAt) return null;
+  return a.level;
+}
+
+export async function assertDocAccess(tx: Transaction, userID: string, organizationId: string, nodeId: string, min: AccessLevel) {
+  const a = await docNodeAccess(tx, userID, organizationId, nodeId);
+  if (!a?.level) throw new PermissionError("Document not found or not accessible");
+  if (!atLeast(a.level, min)) throw new PermissionError(`This needs ${min} access`);
+  return a;
 }

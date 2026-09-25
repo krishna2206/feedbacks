@@ -6,7 +6,7 @@
  *   Defaults below only help server-side scripts (seed, migrations).
  * - Enumerations are plain `text` columns validated by Zod in mutators (see `src/enums.ts`).
  */
-import { boolean, customType, index, integer, json, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, customType, doublePrecision, index, integer, json, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
 import type {
   AccessLevel,
   ActivityKind,
@@ -185,6 +185,8 @@ export const attachment = pgTable(
     messageId: text("message_id").references(() => message.id, { onDelete: "cascade" }),
     /** Channel the file was uploaded to (access checks, including before the message is sent) */
     channelId: text("channel_id").references(() => channel.id, { onDelete: "cascade" }),
+    /** Document the file belongs to (images pasted in a document; access follows the document) */
+    docId: text("doc_id").references(() => doc.id, { onDelete: "cascade" }),
     kind: text("kind").$type<AttachmentKind>().notNull(),
     name: text("name").notNull(),
     mimeType: text("mime_type").notNull(),
@@ -406,12 +408,23 @@ export const docFolder = pgTable(
     organizationId: orgId(),
     parentId: text("parent_id"),
     name: text("name").notNull(),
-    /** false = uses its own grants instead of inheriting from the parent */
+    /** false = "restricted": only its own grants apply; true = its grants add to the inherited ones */
     inheritGrants: boolean("inherit_grants").notNull().default(true),
+    /** Manual order among siblings (fractional: moving an item only rewrites that item) */
+    sortOrder: doublePrecision("sort_order").notNull().default(0),
     createdBy: userRef("created_by"),
     createdAt: createdAt(),
+    updatedAt: timestampTz("updated_at").defaultNow().notNull(),
+    /** Trash: set on the deleted folder and everything under it (restorable until purged) */
+    deletedAt: timestampTz("deleted_at"),
+    deletedBy: userRef("deleted_by"),
+    /**
+     * null on the item the user deleted (a "trash root"); on items trashed along with a folder, the id of
+     * that folder: restoring or purging a root handles its whole subtree
+     */
+    trashRootId: text("trash_root_id"),
   },
-  (t) => [index("doc_folder_parent_idx").on(t.organizationId, t.parentId)],
+  (t) => [index("doc_folder_parent_idx").on(t.organizationId, t.parentId), index("doc_folder_trash_idx").on(t.trashRootId)],
 );
 
 export const doc = pgTable(
@@ -423,15 +436,25 @@ export const doc = pgTable(
     title: text("title").notNull(),
     /** Markdown */
     content: text("content").notNull().default(""),
+    /** Incremented by every save; a save based on an older version is a conflict (see docs.save) */
+    version: integer("version").notNull().default(1),
     inheritGrants: boolean("inherit_grants").notNull().default(true),
-    /** Where the document was imported from, e.g. "drive:Company/Operations/Refunds" */
+    sortOrder: doublePrecision("sort_order").notNull().default(0),
+    /** Where the document was imported from, e.g. "import:Handbook/Onboarding.md" */
     source: text("source"),
     createdBy: userRef("created_by"),
     createdAt: createdAt(),
     updatedBy: userRef("updated_by"),
     updatedAt: timestampTz("updated_at").defaultNow().notNull(),
+    deletedAt: timestampTz("deleted_at"),
+    deletedBy: userRef("deleted_by"),
+    trashRootId: text("trash_root_id"),
   },
-  (t) => [index("doc_folder_idx").on(t.folderId)],
+  (t) => [
+    index("doc_folder_idx").on(t.folderId),
+    index("doc_org_idx").on(t.organizationId, t.deletedAt),
+    index("doc_trash_idx").on(t.trashRootId),
+  ],
 );
 
 export const docVersion = pgTable(
@@ -442,6 +465,8 @@ export const docVersion = pgTable(
     docId: text("doc_id")
       .notNull()
       .references(() => doc.id, { onDelete: "cascade" }),
+    /** Value of `doc.version` after the save that produced this snapshot */
+    number: integer("number").notNull().default(1),
     title: text("title").notNull(),
     content: text("content").notNull(),
     authorId: userRef("author_id"),
@@ -450,21 +475,74 @@ export const docVersion = pgTable(
   (t) => [index("doc_version_doc_idx").on(t.docId, t.createdAt)],
 );
 
-/** Access to a folder or a document for the whole org, a team or a user */
+/**
+ * Access to a folder or a document for the whole org, a team or a user (id = `${nodeId}:${type}:${principalId ?? "org"}`).
+ * Grants are additive to the inherited ones, unless the node is restricted (`inherit_grants = false`).
+ * Never read directly for permission checks: `acl_entry` holds the resolved result.
+ */
 export const accessGrant = pgTable(
   "access_grant",
   {
     id: text("id").primaryKey(),
     organizationId: orgId(),
+    /** The folder or document id (exactly one of folder_id / doc_id is set, and equals node_id) */
+    nodeId: text("node_id").notNull(),
     folderId: text("folder_id").references(() => docFolder.id, { onDelete: "cascade" }),
     docId: text("doc_id").references(() => doc.id, { onDelete: "cascade" }),
     principalType: text("principal_type").$type<PrincipalType>().notNull(),
     /** Team or user id; null when principalType = "org" */
     principalId: text("principal_id"),
     level: text("level").$type<AccessLevel>().notNull(),
+    createdBy: userRef("created_by"),
     createdAt: createdAt(),
   },
-  (t) => [index("access_grant_folder_idx").on(t.folderId), index("access_grant_doc_idx").on(t.docId)],
+  (t) => [
+    index("access_grant_folder_idx").on(t.folderId),
+    index("access_grant_doc_idx").on(t.docId),
+    index("access_grant_node_idx").on(t.nodeId, t.id),
+  ],
+);
+
+/**
+ * Effective access of every folder and document, resolved by triggers (migration 0005) from the grants,
+ * the inheritance flags and the tree: own grants + inherited entries (unless restricted), highest level
+ * per principal. Root-level nodes inherit the organization default ("edit" for every member).
+ * Zero filters rows with it (no recursion in ZQL); the API uses it through `doc_access_level()`.
+ * id = `${nodeId}:${principalType}:${principalId ?? "org"}`
+ */
+export const aclEntry = pgTable(
+  "acl_entry",
+  {
+    id: text("id").primaryKey(),
+    organizationId: orgId(),
+    nodeId: text("node_id").notNull(),
+    nodeKind: text("node_kind").$type<"folder" | "doc">().notNull(),
+    principalType: text("principal_type").$type<PrincipalType>().notNull(),
+    principalId: text("principal_id"),
+    level: text("level").$type<AccessLevel>().notNull(),
+  },
+  (t) => [
+    index("acl_entry_node_idx").on(t.nodeId, t.principalType, t.principalId),
+    index("acl_entry_principal_idx").on(t.principalType, t.principalId),
+  ],
+);
+
+/** A document linked to a ticket ("Related documents" / "Referenced by"), id = `${ticketId}:${docId}` */
+export const docLink = pgTable(
+  "doc_link",
+  {
+    id: text("id").primaryKey(),
+    organizationId: orgId(),
+    ticketId: text("ticket_id")
+      .notNull()
+      .references(() => ticket.id, { onDelete: "cascade" }),
+    docId: text("doc_id")
+      .notNull()
+      .references(() => doc.id, { onDelete: "cascade" }),
+    createdBy: userRef("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("doc_link_ticket_idx").on(t.ticketId, t.createdAt, t.id), index("doc_link_doc_idx").on(t.docId, t.createdAt, t.id)],
 );
 
 /* ------------------------------------------------------------------ */

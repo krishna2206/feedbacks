@@ -1,14 +1,15 @@
 /**
  * Light markdown for chat messages, rendered to React elements (never HTML strings, so no XSS):
  *   ```code blocks```, `inline code`, **bold**, *italic* / _italic_, ~~strike~~,
- *   auto-linked URLs and `<@userId>` mentions.
+ *   auto-linked URLs, `<@userId>` mentions and `<doc:id>` document mentions.
  */
 import { Fragment, type ReactNode } from "react";
+import { DocMention } from "../docs/DocMention";
 
 type UserLookup = (id: string) => { name: string } | undefined;
 
 const INLINE =
-  /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(~~[^~\n]+~~)|(\*[^*\s][^*\n]*\*)|(\b_[^_\s][^_\n]*_\b)|(<@[A-Za-z0-9_-]{1,64}>)|(https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?])/g;
+  /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(~~[^~\n]+~~)|(\*[^*\s][^*\n]*\*)|(\b_[^_\s][^_\n]*_\b)|(<@[A-Za-z0-9_-]{1,64}>)|(<doc:[A-Za-z0-9_-]{1,64}>)|(https?:\/\/[^\s<>"')\]]+[^\s<>"')\].,;:!?])/g;
 
 export function inline(text: string, users: UserLookup, meId: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -31,7 +32,8 @@ export function inline(text: string, users: UserLookup, meId: string, keyBase: s
           @{u?.name ?? "unknown"}
         </span>,
       );
-    } else if (m[7])
+    } else if (m[7]) out.push(<DocMention key={key} id={tok.slice(5, -1)} />);
+    else if (m[8])
       out.push(
         <a key={key} href={tok} target="_blank" rel="noopener noreferrer nofollow">
           {tok}
@@ -76,5 +78,7 @@ export function Markdown({ text, users, meId }: { text: string; users: UserLooku
 
 /** Plain-text version (mentions resolved) for previews, copy and aria labels */
 export function plainText(text: string, users: UserLookup) {
-  return text.replace(/<@([A-Za-z0-9_-]{1,64})>/g, (_, id: string) => `@${users(id)?.name ?? "unknown"}`);
+  return text
+    .replace(/<@([A-Za-z0-9_-]{1,64})>/g, (_, id: string) => `@${users(id)?.name ?? "unknown"}`)
+    .replace(/<doc:[A-Za-z0-9_-]{1,64}>/g, "[document]");
 }

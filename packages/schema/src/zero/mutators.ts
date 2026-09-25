@@ -3,6 +3,7 @@ import { defineMutator, defineMutators, type Transaction } from "@rocicorp/zero"
 import { z } from "zod";
 import { DM_MAX_MEMBERS, dmChannelId, excerpt, mentionedUserIds, normalizeChannelName } from "../chat";
 import { channelKind } from "../enums";
+import { accessMutators, docLinkMutators, docMutators, folderMutators, teamMutators, trashMutators } from "./mutators-docs";
 import { notificationMutators, wantsNotification } from "./mutators-notifications";
 import { commentMutators, labelMutators, projectMutators, ticketMutators } from "./mutators-tickets";
 import { assertCanManageChannel, assertCanReadChannel, assertOrgMember, isOrgAdmin, orgMembership, PermissionError } from "./permissions";
@@ -452,4 +453,10 @@ export const mutators = defineMutators({
   tickets: ticketMutators,
   comments: commentMutators,
   notifications: notificationMutators,
+  folders: folderMutators,
+  docs: docMutators,
+  trash: trashMutators,
+  access: accessMutators,
+  teams: teamMutators,
+  docLinks: docLinkMutators,
 });

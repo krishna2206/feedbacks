@@ -133,10 +133,30 @@ const issueRoute = createRoute({
   path: "/issue/$ref",
   component: lazyRouteComponent(() => import("./app/tickets/TicketPage"), "TicketPage"),
 });
+/* Knowledge base: root folder, a folder, a document (?edit to open the editor, ?history for versions), trash */
 const docsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/docs",
-  component: lazyRouteComponent(() => import("./app/Placeholder"), "DocsPlaceholder"),
+  component: lazyRouteComponent(() => import("./app/docs/DocsPages"), "DocsRootPage"),
+});
+const docsFolderRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/docs/f/$folderId",
+  component: lazyRouteComponent(() => import("./app/docs/DocsPages"), "DocsFolderPage"),
+});
+const docsTrashRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/docs/trash",
+  component: lazyRouteComponent(() => import("./app/docs/DocsPages"), "DocsTrashPage"),
+});
+const docRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/docs/d/$docId",
+  validateSearch: (s: Record<string, unknown>): { edit?: boolean; history?: boolean } => ({
+    edit: s.edit === true || s.edit === "true" || s.edit === "1" ? true : undefined,
+    history: s.history === true || s.history === "true" || s.history === "1" ? true : undefined,
+  }),
+  component: lazyRouteComponent(() => import("./app/docs/DocPage"), "DocPage"),
 });
 
 const settingsRoute = createRoute({
@@ -150,6 +170,11 @@ const notificationSettingsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/settings/notifications",
   component: lazyRouteComponent(() => import("./app/notifications/NotificationSettingsPage"), "NotificationSettingsPage"),
+});
+const teamsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/settings/teams",
+  component: lazyRouteComponent(() => import("./app/settings/TeamsPage"), "TeamsPage"),
 });
 const membersRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -174,9 +199,13 @@ const routeTree = rootRoute.addChildren([
     projectSettingsRoute,
     issueRoute,
     docsRoute,
+    docsFolderRoute,
+    docsTrashRoute,
+    docRoute,
     settingsRoute,
     notificationSettingsRoute,
     membersRoute,
+    teamsRoute,
   ]),
 ]);
 

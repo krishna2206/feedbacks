@@ -1,5 +1,5 @@
 /**
- * Uploads a file for a channel. Images are measured and get a small preview generated in the
+ * Uploads a file for a channel or a document. Images are measured and get a small preview generated in the
  * browser (canvas → WebP, JPEG fallback): the server stays free of native image libraries.
  */
 export type UploadedAttachment = {
@@ -45,11 +45,13 @@ async function prepareImage(file: File): Promise<{ width: number; height: number
   }
 }
 
-export async function uploadFile(file: File, organizationId: string, channelId: string): Promise<UploadedAttachment> {
+/** Uploads for a channel (pending until the message is sent) or for a document (`{ docId }`, edit access needed) */
+export async function uploadFile(file: File, organizationId: string, target: string | { docId: string }): Promise<UploadedAttachment> {
   const form = new FormData();
   form.set("file", file);
   form.set("organizationId", organizationId);
-  form.set("channelId", channelId);
+  if (typeof target === "string") form.set("channelId", target);
+  else form.set("docId", target.docId);
   const img = await prepareImage(file);
   if (img) {
     form.set("width", String(img.width));

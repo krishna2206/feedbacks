@@ -32,7 +32,7 @@ export function useGlobalShortcuts() {
       }
       const key = e.key.toLowerCase();
       if (pendingG.current) {
-        const target = { m: go.myTickets, p: go.projects, s: () => go.settings("notifications"), d: go.docs }[key];
+        const target = { m: go.myTickets, p: go.projects, s: () => go.settings("notifications"), d: () => go.docs() }[key];
         clearG();
         if (target) {
           e.preventDefault();

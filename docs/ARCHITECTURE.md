@@ -42,11 +42,11 @@ Every business table has `organization_id`, so an instance can host several orga
 | Tickets | `ticket`, `ticket_label`, **`ticket_source`** (N:N ticket ↔ message, the link from feedback to work), `ticket_alias` (former keys of moved tickets), `comment`, `activity` |
 | Notifications | `notification` (mentions, assignments, status changes, comments, "your message became a ticket", access requests; `read_at`, `archived_at`), `notification_setting` (per user and organization: muted kinds, browser notifications) |
 | Internal (not synced) | `storage_deletion` (files waiting to be deleted from storage, with retry state), `search_doc` (full-text index, maintained by triggers) |
-| Knowledge base | `doc_folder`, `doc` (Markdown), `doc_version`, `access_grant` (org/team/user × read/edit/manage, inherited through folders) |
+| Knowledge base | `doc_folder` and `doc` (tree, fractional `sort_order`, trash columns), `doc_version` (one row per save, the current one included), `access_grant` (what people gave: org/team/user × read/edit/manage on a node), **`acl_entry`** (the resolved access of every node, maintained by triggers), `doc_link` (document ↔ ticket); `attachment.doc_id` for images pasted in documents |
 
 ### What gets synced
 
-The Postgres publication `zero_data` (migration `0001_zero_publication.sql`) and `drizzle-zero.config.ts` define what zero-cache replicates. Secrets never leave Postgres: `session`, `account` and `verification` are excluded, and `user` only exposes public profile columns. When you add a table, add it to both.
+The Postgres publication `zero_data` (migration `0001_zero_publication.sql`) and `drizzle-zero.config.ts` define what zero-cache replicates. Secrets never leave Postgres: `session`, `account` and `verification` are excluded, and `user` only exposes public profile columns. When you add a table, add it to both. `doc.content` isn't synced either (see "Knowledge base mechanics"): clients read a document's body from its current `doc_version` row, so the tree syncs without bodies.
 
 ## Chat mechanics
 
@@ -110,12 +110,24 @@ Notifications are written by the server mutators only, never for the actor. **Pr
 
 **Keyboard shortcuts** are global (capture phase, so a `G` then `P` sequence never reaches a page's own `P` handler) and never fire while typing: `⌘K`, `/` search, `?` help, `G` then `M` / `P` / `D` / `S`, `C` new ticket, `[` sidebar. Pages add their own (lists, chat selection, ticket page).
 
+## Knowledge base mechanics
+
+- **Access model (Drive-like).** A grant gives the whole organization, a team or a person `read`, `edit` (write, move, trash) or `manage` (edit + share) on a folder or a document. Grants are **additive** to what a node inherits from its parent folder; a node can be **restricted** (`inherit_grants = false`), then only its own grants apply. Root-level nodes inherit the organization default: every member can edit. Owners and admins manage everything. Restricting a node first copies the inherited access into its own grants (and keeps the person restricting as a manager), so nothing changes until grants are edited.
+- **Resolved access is materialized.** ZQL can't recurse through a tree, so Postgres triggers (migration `0005`) keep `acl_entry` up to date: for every folder and document, its own grants plus its parent's entries (unless restricted), highest level per principal. They run on grant changes, moves, inheritance changes and inserts, and recompute the subtree. Zero queries filter folders and documents with it (org entry, one of the user's teams, or the user), so **rows of unreadable nodes are never synced** — no "locked stub" either: a shared link to such a node shows a request-access page served by `GET /api/docs/node/:id` (kind and level only, no title). The API uses the same data through `doc_access_level(user, node)` (search, file downloads, import). Mutators mirror a new node's entries optimistically on the client; the server's come from the triggers.
+- **Request access.** `access.request` notifies the node's managers (owners/admins and `manage` entries, users or team members) with an `access_request` notification; they grant it in one click from the notification (`access.grantRequest`).
+- **Versions and conflicts.** Every save inserts a `doc_version` row (author, number) and bumps `doc.version`. A save carries the version it was based on; the server row-locks the document and refuses a stale save with `DOC_CONFLICT` unless `force` (the editor offers "overwrite", "load their version" or "copy my text"). There is no CRDT: nothing is merged silently. The check only runs on the server — clients re-run pending mutators on every sync, where a local check would fail spuriously. Restoring a version saves its content as a new version.
+- **Trash.** Deleting marks the item (a *trash root*, `trash_root_id = null`) and everything under it (`trash_root_id` = the root); restoring or purging a root handles its subtree. Trashed items leave the tree and the search index. Purging is for owners and admins; the upload sweeper purges items older than `DOCS_TRASH_DAYS` (default 30), and document images are deleted with their document (storage deletion queue).
+- **Links and mentions.** `doc_link` ties documents to tickets ("Related documents" / "Referenced by"), each side filtered by its own permissions. Messages and comments mention documents as `<doc:id>` tokens (typed as `[[Title]]`); readers who can't read the document see "Restricted document".
+- **View as.** Owners and admins can preview what a member sees: the tree queries take a `viewAs` argument, honored only when the caller is an owner/admin, and the UI is read-only in that mode. It can only narrow what an admin already sees, and mutations always use the caller.
+- **Import.** `POST /api/docs/import` recreates folders and documents from a `.zip` of Markdown files (or one `.md`), in one transaction, with a dry-run report (created, reused folders, skipped files, relative images). It is the first step towards importing Google Drive (Docs exported as Markdown); a Drive connector is a separate piece of work.
+
 ## Permissions
 
 - **Queries** filter rows server-side (`packages/schema/src/zero/permissions.ts`). For example, a channel is visible if it's public and the user belongs to its organization, or if the user is a member of the channel. Clients only ever receive rows they may see.
 - **Mutators** check permissions only when `tx.location === "server"`. On the client, the rows needed for the check may not be synced, and the server decides anyway.
 - **Channels**: public channels are readable by every organization member and writable once joined (posting joins automatically); private channels and DMs are readable and writable by their members only; only their members can add people to a private channel. The creator, owners and admins rename, re-scope or archive a channel. Authors edit their messages; authors, owners and admins delete them.
-- **Organization roles** (Better Auth): owner and admins invite members and change roles. **Document grants** will use the same query and mutator mechanism (M4).
+- **Organization roles** (Better Auth): owner and admins invite members, change roles and manage teams.
+- **Documents**: see "Knowledge base mechanics" — resolved access (`acl_entry`) filters every query; mutators check `read` / `edit` / `manage` with the same data on the server.
 - **Projects**: owners and admins create, archive and see every project. A project with visibility `org` is readable by every organization member (implicit *viewer*); with `members`, only by its members. Project roles decide what people can do: **lead** manages the project and its members, **contributor** creates and edits tickets, **reporter** reads and comments, **viewer** reads.
 - **Tickets** are readable when their project is, and also by the **authors of their source messages**, even in a project they can't otherwise see: whoever reported a problem can follow what became of it. Creating and editing tickets requires lead/contributor (or admin); commenting requires reporter or above, or being a source author. Labels are created by contributors and above, renamed or deleted by admins.
 - **Agents** (MCP, CLI) act through a user's session, so they never have more rights than that user.
@@ -137,3 +149,6 @@ Notifications are written by the server mutators only, never for the actor. **Pr
 | `ALREADY_LINKED` + `force` for message → ticket links | Re-running a conversion (human or agent) never silently duplicates tickets |
 | `message.ticket_count` maintained by a trigger | "Unprocessed" becomes an indexed filter; correct on every path, including cascades |
 | Source authors can read their tickets | Closing the loop with the people who report problems, without opening whole projects |
+| Materialized document access (`acl_entry`) | Zero filters can't recurse; one resolved table serves sync, search, files and the API with the same answer |
+| Document bodies not synced with the tree | A large knowledge base stays light on every client; a body syncs when its document is opened |
+| Explicit save conflicts instead of CRDT | Simple and predictable for Markdown documents edited occasionally; nothing is merged behind anyone's back |
