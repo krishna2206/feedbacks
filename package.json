@@ -17,7 +17,9 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test:e2e-sync": "node scripts/e2e-sync.mjs",
-    "user:reset-password": "node scripts/with-env.mjs pnpm --filter @feedbacks/api --silent user:reset-password"
+    "user:reset-password": "node scripts/with-env.mjs pnpm --filter @feedbacks/api --silent user:reset-password",
+    "analyze-query": "pnpm --filter @feedbacks/api --silent analyze-query",
+    "uploads:sweep": "node scripts/with-env.mjs pnpm --filter @feedbacks/api --silent uploads:sweep"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

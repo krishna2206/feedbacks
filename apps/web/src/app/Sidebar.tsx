@@ -1,5 +1,5 @@
 import { queries } from "@feedbacks/schema/zero";
-import { avatarColor, Button, Caret, Icon, type IconName, Menu, Tooltip, useMenu } from "@feedbacks/ui";
+import { Avatar, avatarColor, Button, Caret, Icon, type IconName, Menu, Tooltip, useMenu } from "@feedbacks/ui";
 import { useQuery } from "@rocicorp/zero/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { LANGUAGES, setLanguage } from "../i18n";
 import { authClient } from "../lib/auth-client";
 import { setTheme, useTheme } from "../lib/theme";
+import { BrowseChannelsModal, NewDmModal } from "./chat/ChannelModals";
 import { NewChannelModal } from "./NewChannelModal";
 import { useOrg } from "./org-context";
 import { setSidebar, useSidebar } from "./sidebar-state";
@@ -17,15 +18,17 @@ function NavLink({
   icon,
   label,
   trailing,
+  unread,
 }: {
   to: string;
   params?: Record<string, string>;
   icon: ReactNode;
   label: string;
   trailing?: ReactNode;
+  unread?: boolean;
 }) {
   return (
-    <Link to={to} params={params} className="nav-link" activeProps={{ "data-active": true } as object}>
+    <Link to={to} params={params} className="nav-link" data-unread={unread || undefined} activeProps={{ "data-active": true } as object}>
       {icon}
       <span className="nav-link__label">{label}</span>
       {trailing}
@@ -55,7 +58,10 @@ export function Sidebar() {
   const navigate = useNavigate();
   const theme = useTheme();
   const { width, collapsed } = useSidebar();
-  const [channels] = useQuery(queries.channels.list({ organizationId: org.id }));
+  const [channels] = useQuery(queries.channels.mine({ organizationId: org.id }));
+  const [dms] = useQuery(queries.channels.dms({ organizationId: org.id }));
+  const [browse, setBrowse] = useState(false);
+  const [newDm, setNewDm] = useState(false);
   const wsMenu = useMenu();
   const [newChannel, setNewChannel] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -133,17 +139,59 @@ export function Sidebar() {
               </Tooltip>
             }
           >
-            {channels
-              .filter((c) => c.kind !== "dm")
-              .map((c) => (
+            {channels.map((c) => {
+              const unread = Math.max(0, (c.lastSeq ?? 0) - (c.members[0]?.lastReadSeq ?? 0));
+              return (
                 <NavLink
                   key={c.id}
                   to="/$orgSlug/c/$channelId"
                   params={{ orgSlug: org.slug, channelId: c.id }}
                   icon={<Icon name={channelIcon(c.kind)} />}
                   label={c.name}
+                  unread={unread > 0}
+                  trailing={unread > 0 ? <span className="nav-link__count">{unread > 99 ? "99+" : unread}</span> : null}
                 />
-              ))}
+              );
+            })}
+            <button type="button" className="nav-link nav-link--button" onClick={() => setBrowse(true)}>
+              <Icon name="search" />
+              <span className="nav-link__label">{t("nav.browseChannels")}</span>
+            </button>
+          </Section>
+
+          <Section
+            title={t("nav.directMessages")}
+            action={
+              <Tooltip content={t("nav.newDm")} placement="bottom">
+                <Button
+                  variant="muted"
+                  size="sm"
+                  iconOnly
+                  icon={<Icon name="plus" size={14} />}
+                  onClick={() => setNewDm(true)}
+                  aria-label={t("nav.newDm")}
+                />
+              </Tooltip>
+            }
+          >
+            {dms.length === 0 && <div className="nav-empty">{t("nav.noDms")}</div>}
+            {dms.map((c) => {
+              const mine = c.members.find((m) => m.userId === user.id);
+              const others = c.members.filter((m) => m.userId !== user.id).map((m) => m.user);
+              const unread = Math.max(0, (c.lastSeq ?? 0) - (mine?.lastReadSeq ?? 0));
+              const label = others.map((u) => u?.name ?? "?").join(", ") || user.name;
+              return (
+                <NavLink
+                  key={c.id}
+                  to="/$orgSlug/c/$channelId"
+                  params={{ orgSlug: org.slug, channelId: c.id }}
+                  icon={others.length > 1 ? <Icon name="users" /> : <Avatar user={others[0] ?? null} size={16} />}
+                  label={label}
+                  unread={unread > 0}
+                  trailing={unread > 0 ? <span className="nav-link__badge">{unread > 99 ? "99+" : unread}</span> : null}
+                />
+              );
+            })}
           </Section>
         </div>
 
@@ -213,6 +261,8 @@ export function Sidebar() {
         ]}
       />
       <NewChannelModal open={newChannel} onClose={() => setNewChannel(false)} />
+      <BrowseChannelsModal open={browse} onClose={() => setBrowse(false)} />
+      <NewDmModal open={newDm} onClose={() => setNewDm(false)} />
     </div>
   );
 }

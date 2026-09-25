@@ -4,7 +4,13 @@ import { cpSync } from "node:fs";
 import { build } from "esbuild";
 
 await build({
-  entryPoints: { index: "src/index.ts", migrate: "src/migrate.ts", "reset-password": "scripts/reset-password.ts", seed: "scripts/seed.ts" },
+  entryPoints: {
+    index: "src/index.ts",
+    migrate: "src/migrate.ts",
+    "reset-password": "scripts/reset-password.ts",
+    seed: "scripts/seed.ts",
+    "sweep-uploads": "scripts/sweep-uploads.ts",
+  },
   outdir: "dist",
   bundle: true,
   splitting: true,

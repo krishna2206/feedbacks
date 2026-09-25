@@ -119,6 +119,7 @@ export const messageRelations = relations(message, ({ one, many }) => ({
 
 export const attachmentRelations = relations(attachment, ({ one }) => ({
   message: one(message, { fields: [attachment.messageId], references: [message.id] }),
+  channel: one(channel, { fields: [attachment.channelId], references: [channel.id] }),
 }));
 
 export const reactionRelations = relations(reaction, ({ one }) => ({

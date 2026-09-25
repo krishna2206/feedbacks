@@ -6,6 +6,8 @@ export interface Toast {
   id: number;
   title: string;
   description?: string;
+  /** "error" shows a red warning icon */
+  tone?: "default" | "error";
   action?: { label: string; onClick: () => void };
 }
 
@@ -39,9 +41,9 @@ export function Toaster({ closeLabel = "Close" }: { closeLabel?: string }) {
   return (
     <div className="toasts" data-surface="elevated">
       {list.map((t) => (
-        <div key={t.id} className="toast" role="status">
+        <div key={t.id} className="toast" role={t.tone === "error" ? "alert" : "status"} data-tone={t.tone ?? "default"}>
           <span className="toast__icon">
-            <Icon name="check" size={11} />
+            <Icon name={t.tone === "error" ? "x" : "check"} size={11} />
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="toast__title">{t.title}</div>

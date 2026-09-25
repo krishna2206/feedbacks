@@ -133,7 +133,12 @@ export const member = pgTable(
     role: text("role").default("member").notNull(),
     createdAt: timestampTz("created_at").notNull(),
   },
-  (table) => [index("member_organizationId_idx").on(table.organizationId), index("member_userId_idx").on(table.userId)],
+  (table) => [
+    index("member_organizationId_idx").on(table.organizationId),
+    index("member_userId_idx").on(table.userId),
+    // Membership lookups of every permission check (org + user)
+    index("member_org_user_idx").on(table.organizationId, table.userId, table.id),
+  ],
 );
 
 export const invitation = pgTable(

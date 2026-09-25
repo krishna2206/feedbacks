@@ -10,13 +10,16 @@
     "start": "node dist/migrate.js && node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "user:reset-password": "tsx scripts/reset-password.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "analyze-query": "tsx scripts/analyze.ts",
+    "uploads:sweep": "tsx scripts/sweep-uploads.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.5",
     "@feedbacks/schema": "workspace:*",
     "@hono/node-server": "2.1.1",
     "@rocicorp/zero": "1.9.0",
+    "aws4fetch": "1.0.20",
     "better-auth": "1.7.6",
     "drizzle-orm": "0.45.3",
     "hono": "4.13.9",

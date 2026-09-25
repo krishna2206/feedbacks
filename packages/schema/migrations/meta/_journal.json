@@ -15,6 +15,13 @@
       "when": 1790275654811,
       "tag": "0001_zero_publication",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790310636222,
+      "tag": "0002_chat",
+      "breakpoints": true
     }
   ]
 }

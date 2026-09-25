@@ -97,8 +97,18 @@ export const channel = pgTable(
     createdBy: userRef("created_by"),
     createdAt: createdAt(),
     archivedAt: timestampTz("archived_at"),
+    /**
+     * Sequence of the last top-level message (allocated by the server in `messages.send`).
+     * Unread count = channel.last_seq - channel_member.last_read_seq: O(1), no COUNT query.
+     */
+    lastSeq: integer("last_seq").notNull().default(0),
+    lastMessageAt: timestampTz("last_message_at"),
   },
-  (t) => [index("channel_org_idx").on(t.organizationId, t.kind)],
+  (t) => [
+    // Sidebar lists: channels by name, direct messages by latest activity
+    index("channel_org_idx").on(t.organizationId, t.kind, t.lastMessageAt, t.id),
+    index("channel_org_name_idx").on(t.organizationId, t.name, t.id),
+  ],
 );
 
 export const channelMember = pgTable(
@@ -113,9 +123,15 @@ export const channelMember = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     lastReadAt: timestampTz("last_read_at"),
+    /** Highest channel sequence the member has seen (see channel.last_seq) */
+    lastReadSeq: integer("last_read_seq").notNull().default(0),
     joinedAt: createdAt(),
   },
-  (t) => [uniqueIndex("channel_member_uq").on(t.channelId, t.userId), index("channel_member_user_idx").on(t.userId)],
+  (t) => [
+    uniqueIndex("channel_member_uq").on(t.channelId, t.userId),
+    index("channel_member_channel_idx").on(t.channelId, t.id),
+    index("channel_member_user_idx").on(t.userId),
+  ],
 );
 
 export const message = pgTable(
@@ -129,14 +145,21 @@ export const message = pgTable(
     authorId: userRef("author_id"),
     /** Set when the message is a reply in a thread */
     parentId: text("parent_id"),
+    /** Mentions are stored as `<@userId>` tokens and rendered as @Name */
     body: text("body").notNull(),
+    /** Position in the channel (top-level messages only; null for thread replies) */
+    seq: integer("seq"),
+    /** Thread summary kept on the parent so lists never count replies */
+    replyCount: integer("reply_count").notNull().default(0),
+    lastReplyAt: timestampTz("last_reply_at"),
     createdAt: createdAt(),
     editedAt: timestampTz("edited_at"),
     deletedAt: timestampTz("deleted_at"),
   },
   (t) => [
-    index("message_channel_created_idx").on(t.channelId, t.createdAt),
-    index("message_parent_idx").on(t.parentId),
+    // Zero always appends the primary key to ORDER BY: indexes end with `id`
+    index("message_channel_created_idx").on(t.channelId, t.createdAt, t.id),
+    index("message_parent_idx").on(t.parentId, t.createdAt, t.id),
     index("message_author_idx").on(t.authorId),
   ],
 );
@@ -146,19 +169,24 @@ export const attachment = pgTable(
   {
     id: text("id").primaryKey(),
     organizationId: orgId(),
+    /** Null while the upload is not yet attached to a sent message */
     messageId: text("message_id").references(() => message.id, { onDelete: "cascade" }),
+    /** Channel the file was uploaded to (access checks, including before the message is sent) */
+    channelId: text("channel_id").references(() => channel.id, { onDelete: "cascade" }),
     kind: text("kind").$type<AttachmentKind>().notNull(),
     name: text("name").notNull(),
     mimeType: text("mime_type").notNull(),
     size: integer("size").notNull(),
     /** Object key in S3-compatible storage */
     storageKey: text("storage_key").notNull(),
+    /** Small WebP preview generated client-side before upload (images only) */
+    thumbKey: text("thumb_key"),
     width: integer("width"),
     height: integer("height"),
     uploadedBy: userRef("uploaded_by"),
     createdAt: createdAt(),
   },
-  (t) => [index("attachment_message_idx").on(t.messageId)],
+  (t) => [index("attachment_message_idx").on(t.messageId, t.createdAt, t.id)],
 );
 
 export const reaction = pgTable(
@@ -176,6 +204,7 @@ export const reaction = pgTable(
   },
   (t) => [
     uniqueIndex("reaction_message_uq").on(t.messageId, t.userId, t.emoji),
+    index("reaction_message_created_idx").on(t.messageId, t.createdAt, t.id),
     uniqueIndex("reaction_comment_uq").on(t.commentId, t.userId, t.emoji),
   ],
 );
@@ -369,4 +398,26 @@ export const accessGrant = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("access_grant_folder_idx").on(t.folderId), index("access_grant_doc_idx").on(t.docId)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Internal (never synced)                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Files to delete from storage. Filled by a trigger whenever an `attachment` row is deleted
+ * (message deletion, channel/organization cascades, pending-upload sweeps), drained by the API.
+ * Failed deletions stay here with a backoff until the sweeper succeeds.
+ */
+export const storageDeletion = pgTable(
+  "storage_deletion",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    key: text("key").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    nextAttemptAt: timestampTz("next_attempt_at").defaultNow().notNull(),
+  },
+  (t) => [index("storage_deletion_due_idx").on(t.nextAttemptAt, t.id)],
 );

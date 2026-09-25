@@ -86,6 +86,11 @@ const orgIndexRoute = createRoute({
 const channelRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/c/$channelId",
+  // ?thread=<messageId> opens the thread panel, ?m=<messageId> scrolls to and highlights a message
+  validateSearch: (s: Record<string, unknown>): { thread?: string; m?: string } => ({
+    thread: typeof s.thread === "string" ? s.thread : undefined,
+    m: typeof s.m === "string" ? s.m : undefined,
+  }),
   component: lazyRouteComponent(() => import("./app/ChannelPage"), "ChannelPage"),
 });
 const inboxRoute = createRoute({

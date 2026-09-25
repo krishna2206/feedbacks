@@ -10,6 +10,9 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production API_PORT=3000 MIGRATIONS_DIR=/app/dist/migrations
 COPY --from=build /repo/apps/api/dist ./dist
+# Local attachment storage (a volume in docker-compose); unused with STORAGE_DRIVER=s3
+RUN mkdir -p /data/uploads && chown -R node:node /data
+ENV UPLOADS_DIR=/data/uploads
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s CMD wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1

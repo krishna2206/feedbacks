@@ -14,8 +14,6 @@
 .auth__subtitle { margin-top: 4px; font-size: 13px; color: var(--label-muted); line-height: 1.5; }
 .auth__form { display: flex; flex-direction: column; gap: 12px; }
 .auth__section { font-size: 12px; font-weight: 500; color: var(--label-muted); margin-top: 6px; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field__label { font-size: 12px; font-weight: 500; color: var(--label-base); display: flex; justify-content: space-between; }
 .field__label a { font-weight: 450; color: var(--label-muted); }
 .field__label a:hover { color: var(--label-title); }
 .auth .input { height: 36px; }

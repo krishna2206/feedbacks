@@ -41,6 +41,21 @@ async function hasPendingInvitation(email: string) {
   return !!row;
 }
 
+/** New members join the organization's #general channel (unread starts now) */
+async function joinDefaultChannels(organizationId: string, userId: string) {
+  const channels = await db
+    .select({ id: schema.channel.id, lastSeq: schema.channel.lastSeq })
+    .from(schema.channel)
+    .where(and(eq(schema.channel.organizationId, organizationId), eq(schema.channel.kind, "public"), eq(schema.channel.name, "general")));
+  const now = new Date();
+  for (const c of channels) {
+    await db
+      .insert(schema.channelMember)
+      .values({ id: `${c.id}:${userId}`, organizationId, channelId: c.id, userId, lastReadAt: now, lastReadSeq: c.lastSeq, joinedAt: now })
+      .onConflictDoNothing();
+  }
+}
+
 export const inviteUrl = (invitationId: string) => `${env.appUrl}/invite/${invitationId}`;
 
 export const auth = betterAuth({
@@ -93,6 +108,8 @@ export const auth = betterAuth({
         });
       },
       organizationHooks: {
+        afterAcceptInvitation: async ({ member }) => joinDefaultChannels(member.organizationId, member.userId),
+        afterAddMember: async ({ member }) => joinDefaultChannels(member.organizationId, member.userId),
         // Every organization starts with a #general channel
         afterCreateOrganization: async ({ organization: org, user }) => {
           const channelId = newId();

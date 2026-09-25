@@ -76,6 +76,11 @@ const MAP = {
   mail: "mail",
   key: "key",
   signOut: "sign-out",
+  download: "arrow-download",
+  arrowDown: "arrow-down",
+  personAdd: "person-add",
+  emoji: "emoji",
+  doorArrow: "door-arrow-left",
   language: "local-language",
   person: "person-circle",
 };

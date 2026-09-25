@@ -10,6 +10,7 @@ import { zeroDrizzle } from "@rocicorp/zero/server/adapters/drizzle";
 import type { Hono } from "hono";
 import { auth } from "./auth";
 import { db } from "./db";
+import { drainDeletions } from "./uploads-sweeper";
 
 export const dbProvider = zeroDrizzle(schema, db);
 
@@ -46,6 +47,8 @@ export function mountZero(app: Hono) {
       request: c.req.raw,
       userID: ctx.userID,
     });
+    // Mutations may have deleted attachments (their files are queued by a trigger): delete them now
+    drainDeletions();
     return c.json(result);
   });
 }

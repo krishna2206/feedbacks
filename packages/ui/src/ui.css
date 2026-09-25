@@ -171,3 +171,12 @@ button.chip { cursor: default; }
   width: 16px; height: 16px; border-radius: 8px; margin-top: 1px; flex-shrink: 0; display: grid; place-items: center;
   background: var(--control-primary); color: var(--control-primary-label);
 }
+.toast[data-tone="error"] .toast__icon { background: var(--red-base); }
+
+/* ---------- Forms (shared by dialogs and auth pages) ---------- */
+.field { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.field > .btn { align-self: flex-start; }
+.field__label { font-size: 12px; font-weight: 500; color: var(--label-base); display: flex; justify-content: space-between; }
+.field__hint { font-size: 12px; color: var(--label-muted); }
+.form-stack { display: flex; flex-direction: column; gap: 14px; }
+.modal__title { font-weight: 500; color: var(--label-title); }

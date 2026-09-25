@@ -35,5 +35,7 @@ export default drizzleZeroConfig(drizzleSchema, {
     doc: true,
     docVersion: true,
     accessGrant: true,
+    // Internal file-deletion queue: never synced
+    storageDeletion: false,
   },
 });

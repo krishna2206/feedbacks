@@ -5,6 +5,7 @@ import { useZero } from "@rocicorp/zero/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ProjectPicker } from "./chat/ChannelModals";
 import { useOrg } from "./org-context";
 
 export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -15,6 +16,7 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
   const [isPrivate, setPrivate] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +29,7 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
         name,
         kind: isPrivate ? "private" : "public",
         topic: topic.trim() || null,
+        projectId,
         createdAt: Date.now(),
       }),
     );
@@ -34,6 +37,7 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
     setName("");
     setTopic("");
     setPrivate(false);
+    setProjectId(null);
     void navigate({ to: "/$orgSlug/c/$channelId", params: { orgSlug: org.slug, channelId: id } });
   };
 
@@ -64,6 +68,11 @@ export function NewChannelModal({ open, onClose }: { open: boolean; onClose: () 
             placeholder={t("channel.topic")}
             aria-label={t("channel.topic")}
           />
+          <div className="field">
+            <span className="field__label">{t("channel.project")}</span>
+            <ProjectPicker value={projectId} onChange={setProjectId} />
+            <span className="field__hint">{t("channel.projectHint")}</span>
+          </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <input type="checkbox" checked={isPrivate} onChange={(e) => setPrivate(e.target.checked)} />
             {t("channel.private")}
